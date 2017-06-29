@@ -47,7 +47,12 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="FlightMarkers.cs" />
+    <Compile Include="Utilities\Logging.cs" />
+    <Compile Include="VesselFlightMarkers.cs" />
+    <Compile Include="ModuleFlightMarkers.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Utilities\DrawTools.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
