@@ -1,4 +1,5 @@
-﻿// ReSharper disable UnusedMember.Local
+﻿using FlightMarkers.Utilities;
+// ReSharper disable UnusedMember.Local
 
 
 namespace FlightMarkers
@@ -40,7 +41,7 @@ namespace FlightMarkers
         {
             //var distance = Vector3.Distance(FlightGlobals.ActiveVessel.transform.position, vessel.transform.position);
             //ScreenMessages.PostScreenMessage($"Distance: {distance}");
-            VesselFlightMarkers.VesselModules[vessel].Hidden = !VesselFlightMarkers.VesselModules[vessel].Hidden;
+            //VesselFlightMarkers.VesselModules[vessel].Hidden = !VesselFlightMarkers.VesselModules[vessel].Hidden;
         }
 #endif
 
