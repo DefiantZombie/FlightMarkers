@@ -141,7 +141,7 @@ namespace FlightMarkers
 
             if (vessel.staticPressurekPa > 0f)
             {
-                _centerOfLift = FindCenterOfLift(vessel.srf_velocity, vessel.altitude, vessel.staticPressurekPa,
+                _centerOfLift = FindCenterOfLift(vessel.rootPart, vessel.srf_velocity, vessel.altitude, vessel.staticPressurekPa,
                     vessel.atmDensity);
 
             }
@@ -150,11 +150,19 @@ namespace FlightMarkers
                 _centerOfLift = _zeroRay;
             }
 
-            if (_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff))
-                return;
+            if (!_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff))
+            {
+                DrawTools.DrawSphere(_centerOfLift.origin, XKCDColors.Blue, 0.9f * SphereScale);
+                DrawTools.DrawArrow(_centerOfLift.origin, _centerOfLift.direction * ArrowLength, XKCDColors.Blue);
+            }
 
-            DrawTools.DrawSphere(_centerOfLift.origin, XKCDColors.Blue, SphereScale);
-            DrawTools.DrawArrow(_centerOfLift.origin, _centerOfLift.direction * ArrowLength, XKCDColors.Blue);
+            _centerOfThrust = FindCenterOfThrust(vessel.rootPart);
+
+            if (_centerOfThrust.direction != Vector3.zero)
+            {
+                DrawTools.DrawSphere(_centerOfThrust.origin, XKCDColors.Magenta, 0.95f * SphereScale);
+                DrawTools.DrawArrow(_centerOfThrust.origin, _centerOfThrust.direction * ArrowLength, XKCDColors.Magenta);
+            }
             //var thrustProviders = vessel.FindPartModulesImplementing<IThrustProvider>();
             //_centerOfThrust = thrustProviders.Count > 0 ? FindCenterOfThrust(thrustProviders) : _zeroRay;
 
@@ -256,13 +264,13 @@ namespace FlightMarkers
         }
 
 
-        public Ray FindCenterOfLift(Vector3 refVel, double refAlt, double refStp, double refDens)
+        public Ray FindCenterOfLift(Part rootPart, Vector3 refVel, double refAlt, double refStp, double refDens)
         {
             var centerOfLift = Vector3.zero;
             var directionOfLift = Vector3.zero;
             var totalLift = 0f;
 
-            FindCenterOfLiftRecurse(vessel.rootPart, refVel,
+            RecurseCenterOfLift(rootPart, refVel,
                 ref centerOfLift, ref directionOfLift, ref totalLift,
                 refAlt, refStp, refDens);
 
@@ -274,7 +282,7 @@ namespace FlightMarkers
         }
 
 
-        private void FindCenterOfLiftRecurse(Part part, Vector3 refVel, ref Vector3 centerOfLift,
+        private void RecurseCenterOfLift(Part part, Vector3 refVel, ref Vector3 centerOfLift,
             ref Vector3 directionOfLift, ref float totalLift, double refAlt, double refStp, double refDens)
         {
             var count = part.Modules.Count;
@@ -300,51 +308,55 @@ namespace FlightMarkers
             count = part.children.Count;
             for (var i = 0; i < count; i++)
             {
-                FindCenterOfLiftRecurse(part.children[i], refVel, ref centerOfLift, ref directionOfLift, ref totalLift,
+                RecurseCenterOfLift(part.children[i], refVel, ref centerOfLift, ref directionOfLift, ref totalLift,
                     refAlt, refStp, refDens);
             }
         }
 
-        #region OLD MATHS
-        private Ray FindCenterOfLift(IList<ILiftProvider> providers)
+
+        public Ray FindCenterOfThrust(Part rootPart)
         {
-            var refVel = vessel.lastVel;
-            var refAlt = vessel.altitude;
-            var refStp = FlightGlobals.getStaticPressure(refAlt);
-            var refTemp = FlightGlobals.getExternalTemperature(refAlt);
-            var refDens = FlightGlobals.getAtmDensity(refStp, refTemp);
+            var centerOfThrust = Vector3.zero;
+            var directionOfThrust = Vector3.zero;
+            var totalThrust = 0f;
 
-            var centerOfLift = Vector3.zero;
-            var directionOfLift = Vector3.zero;
-            var lift = 0f;
+            RecurseCenterOfThrust(rootPart, ref centerOfThrust, ref directionOfThrust, ref totalThrust);
 
-            for (var i = 0; i < providers.Count; i++)
-            {
-                if (!providers[i].IsLifting) continue;
+            if (Mathf.Approximately(totalThrust, 0f))
+                return new Ray(Vector3.zero, Vector3.zero);
 
-                _centerOfLiftQuery.Reset();
-                _centerOfLiftQuery.refVector = refVel;
-                _centerOfLiftQuery.refAltitude = refAlt;
-                _centerOfLiftQuery.refStaticPressure = refStp;
-                _centerOfLiftQuery.refAirDensity = refDens;
-
-                providers[i].OnCenterOfLiftQuery(_centerOfLiftQuery);
-
-                centerOfLift += _centerOfLiftQuery.pos * _centerOfLiftQuery.lift;
-                directionOfLift += _centerOfLiftQuery.dir * _centerOfLiftQuery.lift;
-                lift += _centerOfLiftQuery.lift;
-            }
-
-            if (lift < float.Epsilon) return new Ray(Vector3.zero, Vector3.zero);
-
-            var m = 1f / lift;
-            centerOfLift *= m;
-            directionOfLift *= m;
-
-            return new Ray(centerOfLift, directionOfLift);
+            var scale = 1f / totalThrust;
+            return new Ray(centerOfThrust * scale, directionOfThrust * scale);
         }
 
 
+        private void RecurseCenterOfThrust(Part part, ref Vector3 centerOfThrust, ref Vector3 directionOfThrust, ref float totalThrust)
+        {
+            var count = part.Modules.Count;
+            while (count-- > 0)
+            {
+                var module = part.Modules[count] as IThrustProvider;
+                if (module == null || !((ModuleEngines)module).isOperational)
+                    continue;
+
+                _centerOfThrustQuery.Reset();
+
+                module.OnCenterOfThrustQuery(_centerOfThrustQuery);
+
+                centerOfThrust += _centerOfThrustQuery.pos * _centerOfThrustQuery.thrust;
+                directionOfThrust += _centerOfThrustQuery.dir * _centerOfThrustQuery.thrust;
+                totalThrust += _centerOfThrustQuery.thrust;
+            }
+
+            count = part.children.Count;
+            for (var i = 0; i < count; i++)
+            {
+                RecurseCenterOfThrust(part.children[i], ref centerOfThrust, ref directionOfThrust, ref totalThrust);
+            }
+        }
+
+
+        #region OLD MATHS
         private Ray FindCenterOfThrust(IList<IThrustProvider> providers)
         {
             var centerOfThrust = Vector3.zero;
