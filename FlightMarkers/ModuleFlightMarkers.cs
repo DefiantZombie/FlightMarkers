@@ -1,4 +1,7 @@
 ﻿using FlightMarkers.Utilities;
+using UnityEngine;
+
+
 // ReSharper disable UnusedMember.Local
 
 
@@ -39,9 +42,8 @@ namespace FlightMarkers
             requireFullControl = false, unfocusedRange = 100f)]
         public void Test()
         {
-            //var distance = Vector3.Distance(FlightGlobals.ActiveVessel.transform.position, vessel.transform.position);
-            //ScreenMessages.PostScreenMessage($"Distance: {distance}");
-            //VesselFlightMarkers.VesselModules[vessel].Hidden = !VesselFlightMarkers.VesselModules[vessel].Hidden;
+            var mod = VesselFlightMarkers.VesselModules[vessel];
+            mod.DisplayDebugWindow = !mod.DisplayDebugWindow;
         }
 #endif
 
@@ -84,7 +86,7 @@ namespace FlightMarkers
         {
             if (HighLogic.LoadedScene != GameScenes.FLIGHT) return;
 
-            if (vessel != null)
+            if (vessel != null && VesselFlightMarkers.VesselModules.ContainsKey(vessel))
             {
                 VesselFlightMarkers.VesselModules[vessel].OnFlightMarkersChanged -= OnFlightMarkersChanged;
                 VesselFlightMarkers.VesselModules[vessel].OnCombineLiftChanged -= OnCombineLiftChanged;
