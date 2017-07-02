@@ -116,6 +116,10 @@ namespace FlightMarkers
         }
 
 
+        public Vector3 TestOrigin;
+        public Vector3 TestDirection;
+        public bool TestEnabled = false;
+
         private void OnRenderObjectEvent()
         {
             if (Camera.current != Camera.main || MapView.MapIsEnabled) return;
@@ -139,30 +143,63 @@ namespace FlightMarkers
 
             DrawTools.DrawSphere(vessel.rootPart.transform.position, XKCDColors.Green, 0.25f);
 
-            if (vessel.staticPressurekPa > 0f)
-            {
-                _centerOfLift = FindCenterOfLift(vessel.rootPart, vessel.srf_velocity, vessel.altitude, vessel.staticPressurekPa,
-                    vessel.atmDensity);
+            _drag = FindDrag(vessel.rootPart);
 
-            }
-            else
-            {
-                _centerOfLift = _zeroRay;
-            }
+            DrawTools.DrawSphere(_drag.origin, XKCDColors.Red, 0.8f * SphereScale);
+            DrawTools.DrawArrow(_drag.origin, _drag.direction * ArrowLength, XKCDColors.Red);
 
-            if (!_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff))
-            {
-                DrawTools.DrawSphere(_centerOfLift.origin, XKCDColors.Blue, 0.9f * SphereScale);
-                DrawTools.DrawArrow(_centerOfLift.origin, _centerOfLift.direction * ArrowLength, XKCDColors.Blue);
-            }
+            //if (vessel.staticPressurekPa > 0f)
+            //{
+            //    _centerOfLift = FindCenterOfLift(vessel.rootPart, vessel.srf_velocity, vessel.altitude, vessel.staticPressurekPa,
+            //        vessel.atmDensity);
 
-            _centerOfThrust = FindCenterOfThrust(vessel.rootPart);
+            //}
+            //else
+            //{
+            //    _centerOfLift = _zeroRay;
+            //}
 
-            if (_centerOfThrust.direction != Vector3.zero)
-            {
-                DrawTools.DrawSphere(_centerOfThrust.origin, XKCDColors.Magenta, 0.95f * SphereScale);
-                DrawTools.DrawArrow(_centerOfThrust.origin, _centerOfThrust.direction * ArrowLength, XKCDColors.Magenta);
-            }
+            //if (!_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff))
+            //{
+            //    DrawTools.DrawSphere(_centerOfLift.origin, XKCDColors.Blue, 0.9f * SphereScale);
+            //    DrawTools.DrawArrow(_centerOfLift.origin, _centerOfLift.direction * ArrowLength, XKCDColors.Blue);
+            //}
+
+            //_centerOfThrust = FindCenterOfThrust(vessel.rootPart);
+
+            //if (_centerOfThrust.direction != Vector3.zero)
+            //{
+            //    DrawTools.DrawSphere(_centerOfThrust.origin, XKCDColors.Magenta, 0.95f * SphereScale);
+            //    DrawTools.DrawArrow(_centerOfThrust.origin, _centerOfThrust.direction * ArrowLength, XKCDColors.Magenta);
+            //}
+
+            //if (vessel.staticPressurekPa > 0f)
+            //{
+            //    _bodyLift = FindBodyLift(vessel.rootPart);
+            //}
+            //else
+            //{
+            //    _bodyLift = _zeroRay;
+            //}
+
+            //if (!_bodyLift.direction.IsSmallerThan(BodyLiftCutoff))
+            //{
+            //    DrawTools.DrawSphere(_bodyLift.origin, XKCDColors.Cyan, 0.85f * SphereScale);
+            //    DrawTools.DrawArrow(_bodyLift.origin, _bodyLift.direction * ArrowLength, XKCDColors.Cyan);
+            //}
+
+            //_drag = FindDrag(vessel.rootPart);
+
+            //if (!_drag.direction.IsSmallerThan(DragCutoff))
+            //{
+            //    DrawTools.DrawSphere(_drag.origin, XKCDColors.Red, 0.8f * SphereScale);
+            //    DrawTools.DrawArrow(_drag.origin, _drag.direction * ArrowLength, XKCDColors.Red);
+            //}
+            
+
+
+
+
             //var thrustProviders = vessel.FindPartModulesImplementing<IThrustProvider>();
             //_centerOfThrust = thrustProviders.Count > 0 ? FindCenterOfThrust(thrustProviders) : _zeroRay;
 
@@ -356,99 +393,75 @@ namespace FlightMarkers
         }
 
 
-        #region OLD MATHS
-        private Ray FindCenterOfThrust(IList<IThrustProvider> providers)
+        public Ray FindBodyLift(Part rootPart)
         {
-            var centerOfThrust = Vector3.zero;
-            var directionOfThrust = Vector3.zero;
-            var thrust = 0f;
+            var bodyLiftPosition = new Vector3();
+            var bodyLiftDirection = new Vector3();
+            var totalBodyLift = 0f;
 
-            for (var i = 0; i < providers.Count; i++)
-            {
-                if (!((ModuleEngines)providers[i]).isOperational) continue;
+            RecurseBodyLift(rootPart, ref bodyLiftPosition, ref bodyLiftDirection, ref totalBodyLift);
 
-                _centerOfThrustQuery.Reset();
+            if (Mathf.Approximately(totalBodyLift, 0f))
+                return new Ray(Vector3.zero, Vector3.zero);
 
-                providers[i].OnCenterOfThrustQuery(_centerOfThrustQuery);
-
-                centerOfThrust += _centerOfThrustQuery.pos * _centerOfThrustQuery.thrust;
-                directionOfThrust += _centerOfThrustQuery.dir * _centerOfThrustQuery.thrust;
-                thrust += _centerOfThrustQuery.thrust;
-            }
-
-            if (thrust < float.Epsilon) return _zeroRay;
-
-            var m = 1f / thrust;
-            centerOfThrust *= m;
-            directionOfThrust *= m;
-
-            return new Ray(centerOfThrust, directionOfThrust);
+            var scale = 1f / totalBodyLift;
+            return new Ray(bodyLiftPosition * scale, bodyLiftDirection * scale);
         }
 
 
-        private Ray FindBodyLift()
+        private void RecurseBodyLift(Part part, ref Vector3 bodyLiftPosition, ref Vector3 bodyLiftDirection,
+            ref float totalBodyLift)
         {
-            var bodyLiftPosition = Vector3.zero;
-            var bodyLiftDirection = Vector3.zero;
-            var lift = 0f;
+            bodyLiftPosition += (part.transform.position + part.transform.rotation * part.bodyLiftLocalPosition) * part.bodyLiftLocalVector.magnitude;
+            bodyLiftDirection += (part.transform.localRotation * part.bodyLiftLocalVector) * part.bodyLiftLocalVector.magnitude;
+            totalBodyLift += part.bodyLiftLocalVector.magnitude;
 
-            for (var i = 0; i < vessel.parts.Count; i++)
+            var count = part.children.Count;
+            for (var i = 0; i < count; i++)
             {
-                var part = vessel.parts[i];
-
-                bodyLiftPosition += (part.transform.position + part.transform.rotation * part.bodyLiftLocalPosition)
-                    * part.bodyLiftLocalVector.magnitude;
-                bodyLiftDirection += (part.transform.localRotation * part.bodyLiftLocalVector)
-                    * part.bodyLiftLocalVector.magnitude;
-                lift += part.bodyLiftLocalVector.magnitude;
+                RecurseBodyLift(part.children[i], ref bodyLiftPosition, ref bodyLiftDirection, ref totalBodyLift);
             }
-
-            if (lift < float.Epsilon) return _zeroRay;
-
-            var m = 1f / lift;
-            bodyLiftPosition *= m;
-            bodyLiftDirection *= m;
-
-            return new Ray(bodyLiftPosition, bodyLiftDirection);
         }
 
 
-        private Ray FindDrag()
+        public Ray FindDrag(Part rootPart)
         {
-            var dragPosition = Vector3.zero;
-            var dragDirection = Vector3.zero;
-            var drag = 0f;
+            var dragPosition = new Vector3();
+            var dragDirection = new Vector3();
+            var dragTotal = 0f;
 
-            for (var i = 0; i < vessel.parts.Count; i++)
+            RecurseDrag(rootPart, ref dragPosition, ref dragDirection, ref dragTotal);
+
+            if (Mathf.Approximately(dragTotal, 0f))
+                return new Ray(Vector3.zero, Vector3.zero);
+
+            var scale = 1f / dragTotal;
+            return new Ray(dragPosition * scale, dragDirection * scale);
+        }
+
+
+        private void RecurseDrag(Part part, ref Vector3 dragPosition , ref Vector3 dragDirection , ref float dragTotal )
+        {
+            dragPosition += part.transform.position * part.dragScalar;
+            dragDirection += -part.dragVectorDir * part.dragScalar;
+            dragTotal += part.dragScalar;
+
+            var count = part.Modules.Count;
+            while (count-- > 0)
             {
-                var part = vessel.parts[i];
-                var liftModule = part.Modules.GetModule<ModuleLiftingSurface>();
+                var module = part.Modules[count] as ModuleLiftingSurface;
+                if (module == null) continue;
 
-                if (liftModule)
-                {
-                    if (liftModule.useInternalDragModel)
-                    {
-                        dragPosition += (part.transform.position + part.transform.rotation * part.CoPOffset) * liftModule.dragScalar;
-                        dragDirection += (part.transform.localRotation * liftModule.dragForce) * liftModule.dragScalar;
-                        drag += liftModule.dragScalar;
-
-                        continue;
-                    }
-                }
-
-                dragPosition += (part.transform.position + part.transform.rotation * part.CoPOffset) * part.dragScalar;
-                dragDirection += (part.transform.localRotation * part.dragVectorDirLocal) * part.dragScalar;
-                drag += part.dragScalar;
+                dragPosition += module.transform.position * module.dragScalar;
+                dragDirection += module.dragForce;
+                dragTotal += module.dragScalar;
             }
 
-            if (drag < float.Epsilon) return _zeroRay;
-
-            var m = 1f / drag;
-            dragPosition *= m;
-            dragDirection *= m;
-
-            return new Ray(dragPosition, dragDirection);
+            count = part.children.Count;
+            for (var i = 0; i < count; i++)
+            {
+                RecurseDrag(part.children[i], ref dragPosition, ref dragDirection, ref dragTotal);
+            }
         }
-        #endregion
     }
 }
