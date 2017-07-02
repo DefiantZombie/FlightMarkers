@@ -1,6 +1,7 @@
 ﻿using FlightMarkers.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using UnityEngine;
 // ReSharper disable ForCanBeConvertedToForeach
 // ReSharper disable RedundantArgumentDefaultValue
@@ -120,17 +121,34 @@ namespace FlightMarkers
         public Vector3 TestDirection;
         public bool TestEnabled = false;
 
+        private readonly VectorAverager _positionAvg = new VectorAverager();
+        private readonly VectorAverager _directionAvg = new VectorAverager();
+
+
+        [Flags]
+        private enum LiftFlag
+        {
+            None,
+            SurfaceLift,
+            BodyLift
+        }
+
+
+        private const LiftFlag CombineFlags = LiftFlag.SurfaceLift | LiftFlag.BodyLift;
+
+
         private void OnRenderObjectEvent()
         {
             if (Camera.current != Camera.main || MapView.MapIsEnabled) return;
 
-            if (CameraManager.Instance.currentCameraMode == CameraManager.CameraMode.IVA && vessel == FlightGlobals.ActiveVessel)
+            if (CameraManager.Instance.currentCameraMode == CameraManager.CameraMode.IVA &&
+                vessel == FlightGlobals.ActiveVessel)
                 return;
 
             if (vessel != FlightGlobals.ActiveVessel)
             {
                 if (Vector3.Distance(FlightGlobals.ActiveVessel.transform.position, vessel.transform.position) >
-                    PhysicsGlobals.Instance.VesselRangesDefault.orbit.unload)
+                    PhysicsGlobals.Instance.VesselRangesDefault.subOrbital.unload)
                 {
                     MarkersEnabled = false;
                     return;
@@ -143,134 +161,70 @@ namespace FlightMarkers
 
             DrawTools.DrawSphere(vessel.rootPart.transform.position, XKCDColors.Green, 0.25f);
 
-            _drag = FindDrag(vessel.rootPart);
+            _centerOfThrust = FindCenterOfThrust(vessel.rootPart);
+            if (_centerOfThrust.direction != Vector3.zero)
+            {
+                DrawTools.DrawSphere(_centerOfThrust.origin, XKCDColors.Magenta, 0.95f * SphereScale);
+                DrawTools.DrawArrow(_centerOfThrust.origin, _centerOfThrust.direction * ArrowLength, XKCDColors.Magenta);
+            }
 
-            DrawTools.DrawSphere(_drag.origin, XKCDColors.Red, 0.8f * SphereScale);
-            DrawTools.DrawArrow(_drag.origin, _drag.direction * ArrowLength, XKCDColors.Red);
+            if (vessel.staticPressurekPa > 0f)
+            {
+                _centerOfLift = FindCenterOfLift(vessel.rootPart, vessel.srf_velocity, vessel.altitude,
+                    vessel.staticPressurekPa, vessel.atmDensity);
+                _bodyLift = FindBodyLift(vessel.rootPart);
+                _drag = FindDrag(vessel.rootPart);
 
-            //if (vessel.staticPressurekPa > 0f)
-            //{
-            //    _centerOfLift = FindCenterOfLift(vessel.rootPart, vessel.srf_velocity, vessel.altitude, vessel.staticPressurekPa,
-            //        vessel.atmDensity);
+                var activeLift = LiftFlag.None;
+                if (!_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff)) activeLift |= LiftFlag.SurfaceLift;
+                if (!_bodyLift.direction.IsSmallerThan(BodyLiftCutoff)) activeLift |= LiftFlag.BodyLift;
 
-            //}
-            //else
-            //{
-            //    _centerOfLift = _zeroRay;
-            //}
+                //var drawCombined = _combineLift && (activeLift & CombineFlags) == CombineFlags;
+                var drawCombined = _combineLift &&
+                                   !_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff) &&
+                                   !_bodyLift.direction.IsSmallerThan(BodyLiftCutoff);
 
-            //if (!_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff))
-            //{
-            //    DrawTools.DrawSphere(_centerOfLift.origin, XKCDColors.Blue, 0.9f * SphereScale);
-            //    DrawTools.DrawArrow(_centerOfLift.origin, _centerOfLift.direction * ArrowLength, XKCDColors.Blue);
-            //}
+                if (drawCombined)
+                {
+                    _positionAvg.Reset();
+                    _directionAvg.Reset();
 
-            //_centerOfThrust = FindCenterOfThrust(vessel.rootPart);
+                    if ((activeLift & LiftFlag.SurfaceLift) == LiftFlag.SurfaceLift)
+                    {
+                        _positionAvg.Add(_centerOfLift.origin);
+                        _directionAvg.Add(_centerOfLift.direction);
+                    }
 
-            //if (_centerOfThrust.direction != Vector3.zero)
-            //{
-            //    DrawTools.DrawSphere(_centerOfThrust.origin, XKCDColors.Magenta, 0.95f * SphereScale);
-            //    DrawTools.DrawArrow(_centerOfThrust.origin, _centerOfThrust.direction * ArrowLength, XKCDColors.Magenta);
-            //}
+                    if ((activeLift & LiftFlag.BodyLift) == LiftFlag.BodyLift)
+                    {
+                        _positionAvg.Add(_bodyLift.origin);
+                        _directionAvg.Add(_bodyLift.direction);
+                    }
 
-            //if (vessel.staticPressurekPa > 0f)
-            //{
-            //    _bodyLift = FindBodyLift(vessel.rootPart);
-            //}
-            //else
-            //{
-            //    _bodyLift = _zeroRay;
-            //}
+                    DrawTools.DrawSphere(_positionAvg.Get(), XKCDColors.Purple, 0.9f * SphereScale);
+                    DrawTools.DrawArrow(_positionAvg.Get(), _directionAvg.Get() * ArrowLength, XKCDColors.Purple);
+                }
+                else
+                {
+                    if ((activeLift & LiftFlag.SurfaceLift) == LiftFlag.SurfaceLift)
+                    {
+                        DrawTools.DrawSphere(_centerOfLift.origin, XKCDColors.Blue, 0.9f * SphereScale);
+                        DrawTools.DrawArrow(_centerOfLift.origin, _centerOfLift.direction * ArrowLength, XKCDColors.Blue);
+                    }
 
-            //if (!_bodyLift.direction.IsSmallerThan(BodyLiftCutoff))
-            //{
-            //    DrawTools.DrawSphere(_bodyLift.origin, XKCDColors.Cyan, 0.85f * SphereScale);
-            //    DrawTools.DrawArrow(_bodyLift.origin, _bodyLift.direction * ArrowLength, XKCDColors.Cyan);
-            //}
+                    if ((activeLift & LiftFlag.BodyLift) == LiftFlag.BodyLift)
+                    {
+                        DrawTools.DrawSphere(_bodyLift.origin, XKCDColors.Cyan, 0.85f * SphereScale);
+                        DrawTools.DrawArrow(_bodyLift.origin, _bodyLift.direction * ArrowLength, XKCDColors.Cyan);
+                    }
+                }
 
-            //_drag = FindDrag(vessel.rootPart);
-
-            //if (!_drag.direction.IsSmallerThan(DragCutoff))
-            //{
-            //    DrawTools.DrawSphere(_drag.origin, XKCDColors.Red, 0.8f * SphereScale);
-            //    DrawTools.DrawArrow(_drag.origin, _drag.direction * ArrowLength, XKCDColors.Red);
-            //}
-            
-
-
-
-
-            //var thrustProviders = vessel.FindPartModulesImplementing<IThrustProvider>();
-            //_centerOfThrust = thrustProviders.Count > 0 ? FindCenterOfThrust(thrustProviders) : _zeroRay;
-
-            //if (_centerOfThrust.direction != Vector3.zero)
-            //{
-            //    DrawTools.DrawSphere(_centerOfThrust.origin, XKCDColors.Magenta, 0.95f * SphereScale);
-            //    DrawTools.DrawArrow(_centerOfThrust.origin, _centerOfThrust.direction * ArrowLength, XKCDColors.Magenta);
-            //}
-
-            //if (vessel.rootPart.staticPressureAtm > 0.0f)
-            //{
-            //    var liftProviders = vessel.FindPartModulesImplementing<ILiftProvider>();
-            //    _centerOfLift = liftProviders.Count > 0 ? FindCenterOfLift(liftProviders) : _zeroRay;
-
-            //    _bodyLift = FindBodyLift();
-
-            //    _drag = FindDrag();
-            //}
-            //else
-            //{
-            //    _centerOfLift = _zeroRay;
-            //    _bodyLift = _zeroRay;
-            //    _drag = _zeroRay;
-            //}
-
-            //if (_combineLift)
-            //{
-            //    _combinedLift.origin = Vector3.zero;
-            //    _combinedLift.direction = Vector3.zero;
-            //    var count = 0;
-
-            //    if (!_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff))
-            //    {
-            //        _combinedLift.origin += _centerOfLift.origin;
-            //        _combinedLift.direction += _centerOfLift.direction;
-            //        count++;
-            //    }
-
-            //    if (!_bodyLift.direction.IsSmallerThan(BodyLiftCutoff))
-            //    {
-            //        _combinedLift.origin += _bodyLift.origin;
-            //        _combinedLift.direction += _bodyLift.direction;
-            //        count++;
-            //    }
-
-            //    _combinedLift.origin /= count;
-            //    _combinedLift.direction /= count;
-
-            //    DrawTools.DrawSphere(_combinedLift.origin, XKCDColors.Purple, 0.9f * SphereScale);
-            //    DrawTools.DrawArrow(_combinedLift.origin, _combinedLift.direction * ArrowLength, XKCDColors.Purple);
-            //}
-            //else
-            //{
-            //    if (!_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff))
-            //    {
-            //        DrawTools.DrawSphere(_centerOfLift.origin, XKCDColors.Blue, 0.9f * SphereScale);
-            //        DrawTools.DrawArrow(_centerOfLift.origin, _centerOfLift.direction * ArrowLength, XKCDColors.Blue);
-            //    }
-
-            //    if (!_bodyLift.direction.IsSmallerThan(BodyLiftCutoff))
-            //    {
-            //        DrawTools.DrawSphere(_bodyLift.origin, XKCDColors.Cyan, 0.85f * SphereScale);
-            //        DrawTools.DrawArrow(_bodyLift.origin, _bodyLift.direction * ArrowLength, XKCDColors.Cyan);
-            //    }
-            //}
-
-            //if (!_drag.direction.IsSmallerThan(DragCutoff))
-            //{
-            //    DrawTools.DrawSphere(_drag.origin, XKCDColors.Red, 0.8f * SphereScale);
-            //    DrawTools.DrawArrow(_drag.origin, _drag.direction * ArrowLength, XKCDColors.Red);
-            //}
+                if (Mathf.Abs(_drag.direction.magnitude) > DragCutoff)
+                {
+                    DrawTools.DrawSphere(_drag.origin, XKCDColors.Red, 0.8f * SphereScale);
+                    DrawTools.DrawArrow(_drag.origin, _drag.direction * ArrowLength, XKCDColors.Red);
+                }
+            }
 
             Profiler.EndSample();
         }
@@ -367,7 +321,8 @@ namespace FlightMarkers
         }
 
 
-        private void RecurseCenterOfThrust(Part part, ref Vector3 centerOfThrust, ref Vector3 directionOfThrust, ref float totalThrust)
+        private void RecurseCenterOfThrust(Part part, ref Vector3 centerOfThrust, ref Vector3 directionOfThrust,
+            ref float totalThrust)
         {
             var count = part.Modules.Count;
             while (count-- > 0)
@@ -397,29 +352,33 @@ namespace FlightMarkers
         {
             var bodyLiftPosition = new Vector3();
             var bodyLiftDirection = new Vector3();
-            var totalBodyLift = 0f;
+            var bodyLiftTotal = 0f;
 
-            RecurseBodyLift(rootPart, ref bodyLiftPosition, ref bodyLiftDirection, ref totalBodyLift);
+            RecurseBodyLift(rootPart, ref bodyLiftPosition, ref bodyLiftDirection, ref bodyLiftTotal);
 
-            if (Mathf.Approximately(totalBodyLift, 0f))
+            if (Mathf.Approximately(bodyLiftTotal, 0f))
                 return new Ray(Vector3.zero, Vector3.zero);
 
-            var scale = 1f / totalBodyLift;
+            var scale = 1f / bodyLiftTotal;
             return new Ray(bodyLiftPosition * scale, bodyLiftDirection * scale);
         }
 
 
         private void RecurseBodyLift(Part part, ref Vector3 bodyLiftPosition, ref Vector3 bodyLiftDirection,
-            ref float totalBodyLift)
+            ref float bodyLiftTotal)
         {
-            bodyLiftPosition += (part.transform.position + part.transform.rotation * part.bodyLiftLocalPosition) * part.bodyLiftLocalVector.magnitude;
-            bodyLiftDirection += (part.transform.localRotation * part.bodyLiftLocalVector) * part.bodyLiftLocalVector.magnitude;
-            totalBodyLift += part.bodyLiftLocalVector.magnitude;
+            //bodyLiftPosition += (part.transform.position + part.transform.rotation * part.bodyLiftLocalPosition) * part.bodyLiftLocalVector.magnitude;
+            //bodyLiftDirection += (part.transform.localRotation * part.bodyLiftLocalVector) * part.bodyLiftLocalVector.magnitude;
+            //bodyLiftTotal += part.bodyLiftLocalVector.magnitude;
+
+            bodyLiftPosition += part.partTransform.TransformPoint(part.bodyLiftLocalPosition) * part.bodyLiftScalar;
+            bodyLiftDirection += part.partTransform.TransformDirection(part.bodyLiftLocalVector) * part.bodyLiftScalar;
+            bodyLiftTotal += part.bodyLiftScalar;
 
             var count = part.children.Count;
             for (var i = 0; i < count; i++)
             {
-                RecurseBodyLift(part.children[i], ref bodyLiftPosition, ref bodyLiftDirection, ref totalBodyLift);
+                RecurseBodyLift(part.children[i], ref bodyLiftPosition, ref bodyLiftDirection, ref bodyLiftTotal);
             }
         }
 
@@ -440,7 +399,7 @@ namespace FlightMarkers
         }
 
 
-        private void RecurseDrag(Part part, ref Vector3 dragPosition , ref Vector3 dragDirection , ref float dragTotal )
+        private void RecurseDrag(Part part, ref Vector3 dragPosition, ref Vector3 dragDirection, ref float dragTotal)
         {
             dragPosition += part.transform.position * part.dragScalar;
             dragDirection += -part.dragVectorDir * part.dragScalar;
@@ -463,5 +422,61 @@ namespace FlightMarkers
                 RecurseDrag(part.children[i], ref dragPosition, ref dragDirection, ref dragTotal);
             }
         }
+
+
+#if DEBUG
+        public bool DisplayDebugWindow = false;
+
+        private Rect _debugWindowPos;
+
+        public void OnGUI()
+        {
+            if (DisplayDebugWindow)
+            {
+                _debugWindowPos = GUILayout.Window("FlightMarkerDebug".GetHashCode(), _debugWindowPos, DrawDebugWindow,
+                    "Flight Markers");
+            }
+        }
+
+        private void DrawDebugWindow(int id)
+        {
+            var buttonStyle = new GUIStyle(GUI.skin.button)
+            {
+                padding = new RectOffset(5, 5, 3, 0),
+                margin = new RectOffset(1, 1, 1, 1),
+                stretchWidth = false,
+                stretchHeight = false
+            };
+
+            var labelStyle = new GUIStyle(GUI.skin.label)
+            {
+                wordWrap = false
+            };
+
+            GUILayout.BeginVertical();
+            GUILayout.FlexibleSpace();
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("X", buttonStyle))
+                DisplayDebugWindow = false;
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Lift: {_centerOfLift.direction.magnitude}", labelStyle);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Body Lift: {_bodyLift.direction.magnitude}", labelStyle);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Drag: {_drag.direction.magnitude}", labelStyle);
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndVertical();
+            GUI.DragWindow();
+        }
+#endif
+
     }
 }
