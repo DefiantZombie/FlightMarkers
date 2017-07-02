@@ -17,21 +17,37 @@ namespace FlightMarkers
         public event Action<bool> OnFlightMarkersChanged;
         public event Action<bool> OnCombineLiftChanged;
 
-        private Ray _centerOfThrust = new Ray(Vector3.zero, Vector3.zero);
-        private Ray _centerOfLift = new Ray(Vector3.zero, Vector3.zero);
-        private Ray _bodyLift = new Ray(Vector3.zero, Vector3.zero);
-        private Ray _drag = new Ray(Vector3.zero, Vector3.zero);
-        private Ray _combinedLift = new Ray(Vector3.zero, Vector3.zero);
+        private ArrowData _centerOfThrust;
+        private ArrowData _centerOfLift;
+        private ArrowData _bodyLift;
+        private ArrowData _drag;
+        //private Ray _combinedLift = new Ray(Vector3.zero, Vector3.zero);
         private readonly CenterOfLiftQuery _centerOfLiftQuery = new CenterOfLiftQuery();
         private readonly CenterOfThrustQuery _centerOfThrustQuery = new CenterOfThrustQuery();
 
-        private static readonly Ray _zeroRay = new Ray(Vector3.zero, Vector3.zero);
+        //private static readonly ArrowData _zeroArrowData = new ArrowData(Vector3.zero, Vector3.zero, 0f);
 
-        private const float CenterOfLiftCutoff = 0.1f;
-        private const float BodyLiftCutoff = 0.1f;
-        private const float DragCutoff = 0.1f;
+        private const float CenterOfLiftCutoff = 1f; // 0.1f
+        private const float BodyLiftCutoff = 1f; // 0.1f
+        private const float DragCutoff = 1f; // 0.1f
         private const float SphereScale = 0.5f;
         private const float ArrowLength = 4.0f;
+
+
+        public struct ArrowData
+        {
+            public Vector3 Position { get; }
+            public Vector3 Direction { get; }
+            public float Total { get; }
+
+
+            public ArrowData(Vector3 position, Vector3 direction, float total)
+            {
+                Position = position;
+                Direction = direction;
+                Total = total;
+            }
+        }
 
 
         private bool _markersEnabled;
@@ -162,10 +178,10 @@ namespace FlightMarkers
             DrawTools.DrawSphere(vessel.rootPart.transform.position, XKCDColors.Green, 0.25f);
 
             _centerOfThrust = FindCenterOfThrust(vessel.rootPart);
-            if (_centerOfThrust.direction != Vector3.zero)
+            if (_centerOfThrust.Direction != Vector3.zero)
             {
-                DrawTools.DrawSphere(_centerOfThrust.origin, XKCDColors.Magenta, 0.95f * SphereScale);
-                DrawTools.DrawArrow(_centerOfThrust.origin, _centerOfThrust.direction * ArrowLength, XKCDColors.Magenta);
+                DrawTools.DrawSphere(_centerOfThrust.Position, XKCDColors.Magenta, 0.95f * SphereScale);
+                DrawTools.DrawArrow(_centerOfThrust.Position, _centerOfThrust.Direction.normalized * ArrowLength, XKCDColors.Magenta);
             }
 
             if (vessel.staticPressurekPa > 0f)
@@ -176,13 +192,10 @@ namespace FlightMarkers
                 _drag = FindDrag(vessel.rootPart);
 
                 var activeLift = LiftFlag.None;
-                if (!_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff)) activeLift |= LiftFlag.SurfaceLift;
-                if (!_bodyLift.direction.IsSmallerThan(BodyLiftCutoff)) activeLift |= LiftFlag.BodyLift;
+                if (_centerOfLift.Total > CenterOfLiftCutoff) activeLift |= LiftFlag.SurfaceLift;
+                if (_bodyLift.Total > BodyLiftCutoff) activeLift |= LiftFlag.BodyLift;
 
-                //var drawCombined = _combineLift && (activeLift & CombineFlags) == CombineFlags;
-                var drawCombined = _combineLift &&
-                                   !_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff) &&
-                                   !_bodyLift.direction.IsSmallerThan(BodyLiftCutoff);
+                var drawCombined = _combineLift && (activeLift & CombineFlags) == CombineFlags;
 
                 if (drawCombined)
                 {
@@ -191,38 +204,38 @@ namespace FlightMarkers
 
                     if ((activeLift & LiftFlag.SurfaceLift) == LiftFlag.SurfaceLift)
                     {
-                        _positionAvg.Add(_centerOfLift.origin);
-                        _directionAvg.Add(_centerOfLift.direction);
+                        _positionAvg.Add(_centerOfLift.Position);
+                        _directionAvg.Add(_centerOfLift.Direction);
                     }
 
                     if ((activeLift & LiftFlag.BodyLift) == LiftFlag.BodyLift)
                     {
-                        _positionAvg.Add(_bodyLift.origin);
-                        _directionAvg.Add(_bodyLift.direction);
+                        _positionAvg.Add(_bodyLift.Position);
+                        _directionAvg.Add(_bodyLift.Direction);
                     }
 
                     DrawTools.DrawSphere(_positionAvg.Get(), XKCDColors.Purple, 0.9f * SphereScale);
-                    DrawTools.DrawArrow(_positionAvg.Get(), _directionAvg.Get() * ArrowLength, XKCDColors.Purple);
+                    DrawTools.DrawArrow(_positionAvg.Get(), _directionAvg.Get().normalized * ArrowLength, XKCDColors.Purple);
                 }
                 else
                 {
                     if ((activeLift & LiftFlag.SurfaceLift) == LiftFlag.SurfaceLift)
                     {
-                        DrawTools.DrawSphere(_centerOfLift.origin, XKCDColors.Blue, 0.9f * SphereScale);
-                        DrawTools.DrawArrow(_centerOfLift.origin, _centerOfLift.direction * ArrowLength, XKCDColors.Blue);
+                        DrawTools.DrawSphere(_centerOfLift.Position, XKCDColors.Blue, 0.9f * SphereScale);
+                        DrawTools.DrawArrow(_centerOfLift.Position, _centerOfLift.Direction.normalized * ArrowLength, XKCDColors.Blue);
                     }
 
                     if ((activeLift & LiftFlag.BodyLift) == LiftFlag.BodyLift)
                     {
-                        DrawTools.DrawSphere(_bodyLift.origin, XKCDColors.Cyan, 0.85f * SphereScale);
-                        DrawTools.DrawArrow(_bodyLift.origin, _bodyLift.direction * ArrowLength, XKCDColors.Cyan);
+                        DrawTools.DrawSphere(_bodyLift.Position, XKCDColors.Cyan, 0.85f * SphereScale);
+                        DrawTools.DrawArrow(_bodyLift.Position, _bodyLift.Direction.normalized * ArrowLength, XKCDColors.Cyan);
                     }
                 }
 
-                if (Mathf.Abs(_drag.direction.magnitude) > DragCutoff)
+                if(_drag.Total > DragCutoff)
                 {
-                    DrawTools.DrawSphere(_drag.origin, XKCDColors.Red, 0.8f * SphereScale);
-                    DrawTools.DrawArrow(_drag.origin, _drag.direction * ArrowLength, XKCDColors.Red);
+                    DrawTools.DrawSphere(_drag.Position, XKCDColors.Red, 0.8f * SphereScale);
+                    DrawTools.DrawArrow(_drag.Position, _drag.Direction.normalized * ArrowLength, XKCDColors.Red);
                 }
             }
 
@@ -255,21 +268,21 @@ namespace FlightMarkers
         }
 
 
-        public Ray FindCenterOfLift(Part rootPart, Vector3 refVel, double refAlt, double refStp, double refDens)
+        public ArrowData FindCenterOfLift(Part rootPart, Vector3 refVel, double refAlt, double refStp, double refDens)
         {
-            var centerOfLift = Vector3.zero;
-            var directionOfLift = Vector3.zero;
-            var totalLift = 0f;
+            var liftPosition = Vector3.zero;
+            var liftDirection = Vector3.zero;
+            var liftTotal = 0f;
 
             RecurseCenterOfLift(rootPart, refVel,
-                ref centerOfLift, ref directionOfLift, ref totalLift,
+                ref liftPosition, ref liftDirection, ref liftTotal,
                 refAlt, refStp, refDens);
 
-            if (Mathf.Approximately(totalLift, 0f))
-                return new Ray(Vector3.zero, Vector3.zero);
+            if (Mathf.Approximately(liftTotal, 0f))
+                return new ArrowData(Vector3.zero, Vector3.zero, liftTotal);
 
-            var scale = 1f / totalLift;
-            return new Ray(centerOfLift * scale, directionOfLift * scale);
+            var scale = 1f / liftTotal;
+            return new ArrowData(liftPosition * scale, liftDirection * scale, liftTotal);
         }
 
 
@@ -305,24 +318,24 @@ namespace FlightMarkers
         }
 
 
-        public Ray FindCenterOfThrust(Part rootPart)
+        public ArrowData FindCenterOfThrust(Part rootPart)
         {
-            var centerOfThrust = Vector3.zero;
-            var directionOfThrust = Vector3.zero;
-            var totalThrust = 0f;
+            var thrustPosition = Vector3.zero;
+            var thrustDirection = Vector3.zero;
+            var thrustTotal = 0f;
 
-            RecurseCenterOfThrust(rootPart, ref centerOfThrust, ref directionOfThrust, ref totalThrust);
+            RecurseCenterOfThrust(rootPart, ref thrustPosition, ref thrustDirection, ref thrustTotal);
 
-            if (Mathf.Approximately(totalThrust, 0f))
-                return new Ray(Vector3.zero, Vector3.zero);
+            if (Mathf.Approximately(thrustTotal, 0f))
+                return new ArrowData(Vector3.zero, Vector3.zero, 0f);
 
-            var scale = 1f / totalThrust;
-            return new Ray(centerOfThrust * scale, directionOfThrust * scale);
+            var scale = 1f / thrustTotal;
+            return new ArrowData(thrustPosition * scale, thrustDirection * scale, thrustTotal);
         }
 
 
-        private void RecurseCenterOfThrust(Part part, ref Vector3 centerOfThrust, ref Vector3 directionOfThrust,
-            ref float totalThrust)
+        private void RecurseCenterOfThrust(Part part, ref Vector3 thrustPosition, ref Vector3 thrustDirection,
+            ref float thrustTotal)
         {
             var count = part.Modules.Count;
             while (count-- > 0)
@@ -335,20 +348,20 @@ namespace FlightMarkers
 
                 module.OnCenterOfThrustQuery(_centerOfThrustQuery);
 
-                centerOfThrust += _centerOfThrustQuery.pos * _centerOfThrustQuery.thrust;
-                directionOfThrust += _centerOfThrustQuery.dir * _centerOfThrustQuery.thrust;
-                totalThrust += _centerOfThrustQuery.thrust;
+                thrustPosition += _centerOfThrustQuery.pos * _centerOfThrustQuery.thrust;
+                thrustDirection += _centerOfThrustQuery.dir * _centerOfThrustQuery.thrust;
+                thrustTotal += _centerOfThrustQuery.thrust;
             }
 
             count = part.children.Count;
             for (var i = 0; i < count; i++)
             {
-                RecurseCenterOfThrust(part.children[i], ref centerOfThrust, ref directionOfThrust, ref totalThrust);
+                RecurseCenterOfThrust(part.children[i], ref thrustPosition, ref thrustDirection, ref thrustTotal);
             }
         }
 
 
-        public Ray FindBodyLift(Part rootPart)
+        public ArrowData FindBodyLift(Part rootPart)
         {
             var bodyLiftPosition = new Vector3();
             var bodyLiftDirection = new Vector3();
@@ -357,10 +370,10 @@ namespace FlightMarkers
             RecurseBodyLift(rootPart, ref bodyLiftPosition, ref bodyLiftDirection, ref bodyLiftTotal);
 
             if (Mathf.Approximately(bodyLiftTotal, 0f))
-                return new Ray(Vector3.zero, Vector3.zero);
+                return new ArrowData(Vector3.zero, Vector3.zero, 0f);
 
             var scale = 1f / bodyLiftTotal;
-            return new Ray(bodyLiftPosition * scale, bodyLiftDirection * scale);
+            return new ArrowData(bodyLiftPosition * scale, bodyLiftDirection * scale, bodyLiftTotal / (PhysicsGlobals.BodyLiftMultiplier * 2));
         }
 
 
@@ -383,7 +396,7 @@ namespace FlightMarkers
         }
 
 
-        public Ray FindDrag(Part rootPart)
+        public ArrowData FindDrag(Part rootPart)
         {
             var dragPosition = new Vector3();
             var dragDirection = new Vector3();
@@ -392,10 +405,10 @@ namespace FlightMarkers
             RecurseDrag(rootPart, ref dragPosition, ref dragDirection, ref dragTotal);
 
             if (Mathf.Approximately(dragTotal, 0f))
-                return new Ray(Vector3.zero, Vector3.zero);
+                return new ArrowData(Vector3.zero, Vector3.zero, 0f);
 
             var scale = 1f / dragTotal;
-            return new Ray(dragPosition * scale, dragDirection * scale);
+            return new ArrowData(dragPosition * scale, dragDirection * scale, dragTotal);
         }
 
 
@@ -429,6 +442,7 @@ namespace FlightMarkers
 
         private Rect _debugWindowPos;
 
+
         public void OnGUI()
         {
             if (DisplayDebugWindow)
@@ -437,6 +451,7 @@ namespace FlightMarkers
                     "Flight Markers");
             }
         }
+
 
         private void DrawDebugWindow(int id)
         {
@@ -462,21 +477,20 @@ namespace FlightMarkers
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"Lift: {_centerOfLift.direction.magnitude}", labelStyle);
+            GUILayout.Label($"Lift: {_centerOfLift.Total}", labelStyle);
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"Body Lift: {_bodyLift.direction.magnitude}", labelStyle);
+            GUILayout.Label($"Body Lift: {_bodyLift.Total}", labelStyle);
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"Drag: {_drag.direction.magnitude}", labelStyle);
+            GUILayout.Label($"Drag: {_drag.Total}", labelStyle);
             GUILayout.EndHorizontal();
 
             GUILayout.EndVertical();
             GUI.DragWindow();
         }
 #endif
-
     }
 }
