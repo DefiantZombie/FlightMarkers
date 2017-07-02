@@ -21,15 +21,14 @@ namespace FlightMarkers
         private ArrowData _centerOfLift;
         private ArrowData _bodyLift;
         private ArrowData _drag;
-        //private Ray _combinedLift = new Ray(Vector3.zero, Vector3.zero);
         private readonly CenterOfLiftQuery _centerOfLiftQuery = new CenterOfLiftQuery();
         private readonly CenterOfThrustQuery _centerOfThrustQuery = new CenterOfThrustQuery();
 
-        //private static readonly ArrowData _zeroArrowData = new ArrowData(Vector3.zero, Vector3.zero, 0f);
+        private static readonly ArrowData _zeroArrowData = new ArrowData(Vector3.zero, Vector3.zero, 0f);
 
-        private const float CenterOfLiftCutoff = 1f; // 0.1f
-        private const float BodyLiftCutoff = 1f; // 0.1f
-        private const float DragCutoff = 1f; // 0.1f
+        private const float CenterOfLiftCutoff = 10f; // 0.1f
+        private const float BodyLiftCutoff = 15f; // 0.1f
+        private const float DragCutoff = 10f; // 0.1f
         private const float SphereScale = 0.5f;
         private const float ArrowLength = 4.0f;
 
@@ -279,7 +278,7 @@ namespace FlightMarkers
                 refAlt, refStp, refDens);
 
             if (Mathf.Approximately(liftTotal, 0f))
-                return new ArrowData(Vector3.zero, Vector3.zero, liftTotal);
+                return _zeroArrowData;
 
             var scale = 1f / liftTotal;
             return new ArrowData(liftPosition * scale, liftDirection * scale, liftTotal);
@@ -327,7 +326,7 @@ namespace FlightMarkers
             RecurseCenterOfThrust(rootPart, ref thrustPosition, ref thrustDirection, ref thrustTotal);
 
             if (Mathf.Approximately(thrustTotal, 0f))
-                return new ArrowData(Vector3.zero, Vector3.zero, 0f);
+                return _zeroArrowData;
 
             var scale = 1f / thrustTotal;
             return new ArrowData(thrustPosition * scale, thrustDirection * scale, thrustTotal);
@@ -370,10 +369,11 @@ namespace FlightMarkers
             RecurseBodyLift(rootPart, ref bodyLiftPosition, ref bodyLiftDirection, ref bodyLiftTotal);
 
             if (Mathf.Approximately(bodyLiftTotal, 0f))
-                return new ArrowData(Vector3.zero, Vector3.zero, 0f);
+                return _zeroArrowData;
 
             var scale = 1f / bodyLiftTotal;
-            return new ArrowData(bodyLiftPosition * scale, bodyLiftDirection * scale, bodyLiftTotal / (PhysicsGlobals.BodyLiftMultiplier * 2));
+            //return new ArrowData(bodyLiftPosition * scale, bodyLiftDirection * scale, bodyLiftTotal / (PhysicsGlobals.BodyLiftMultiplier * 2));
+            return new ArrowData(bodyLiftPosition * scale, bodyLiftDirection * scale, bodyLiftTotal);
         }
 
 
@@ -384,9 +384,15 @@ namespace FlightMarkers
             //bodyLiftDirection += (part.transform.localRotation * part.bodyLiftLocalVector) * part.bodyLiftLocalVector.magnitude;
             //bodyLiftTotal += part.bodyLiftLocalVector.magnitude;
 
-            bodyLiftPosition += part.partTransform.TransformPoint(part.bodyLiftLocalPosition) * part.bodyLiftScalar;
-            bodyLiftDirection += part.partTransform.TransformDirection(part.bodyLiftLocalVector) * part.bodyLiftScalar;
-            bodyLiftTotal += part.bodyLiftScalar;
+            //bodyLiftPosition += part.partTransform.TransformPoint(part.bodyLiftLocalPosition) * part.bodyLiftScalar;
+            //bodyLiftDirection += part.partTransform.TransformDirection(part.bodyLiftLocalVector) * part.bodyLiftScalar;
+            //bodyLiftTotal += part.bodyLiftScalar;
+
+            var direction = part.transform.TransformDirection(part.bodyLiftLocalVector);
+            var magnitude = direction.magnitude;
+            bodyLiftPosition += part.partTransform.TransformPoint(part.bodyLiftLocalPosition) * magnitude;
+            bodyLiftDirection += direction * magnitude;
+            bodyLiftTotal += magnitude;
 
             var count = part.children.Count;
             for (var i = 0; i < count; i++)
@@ -405,7 +411,7 @@ namespace FlightMarkers
             RecurseDrag(rootPart, ref dragPosition, ref dragDirection, ref dragTotal);
 
             if (Mathf.Approximately(dragTotal, 0f))
-                return new ArrowData(Vector3.zero, Vector3.zero, 0f);
+                return _zeroArrowData;
 
             var scale = 1f / dragTotal;
             return new ArrowData(dragPosition * scale, dragDirection * scale, dragTotal);
