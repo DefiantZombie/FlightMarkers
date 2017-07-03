@@ -196,13 +196,13 @@ namespace FlightMarkers
                     if ((activeLift & LiftFlag.SurfaceLift) == LiftFlag.SurfaceLift)
                     {
                         _positionAvg.Add(_centerOfLift.Position);
-                        _directionAvg.Add(_centerOfLift.Direction);
+                        _directionAvg.Add(_centerOfLift.Direction.normalized);
                     }
 
                     if ((activeLift & LiftFlag.BodyLift) == LiftFlag.BodyLift)
                     {
                         _positionAvg.Add(_bodyLift.Position);
-                        _directionAvg.Add(_bodyLift.Direction);
+                        _directionAvg.Add(_bodyLift.Direction.normalized);
                     }
 
                     DrawTools.DrawSphere(_positionAvg.Get(), XKCDColors.Purple, 0.9f * SphereScale);
