@@ -1,6 +1,7 @@
 ﻿using FlightMarkers.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using UnityEngine;
 // ReSharper disable ForCanBeConvertedToForeach
 // ReSharper disable RedundantArgumentDefaultValue
@@ -16,21 +17,38 @@ namespace FlightMarkers
         public event Action<bool> OnFlightMarkersChanged;
         public event Action<bool> OnCombineLiftChanged;
 
-        private Ray _centerOfThrust = new Ray(Vector3.zero, Vector3.zero);
-        private Ray _centerOfLift = new Ray(Vector3.zero, Vector3.zero);
-        private Ray _bodyLift = new Ray(Vector3.zero, Vector3.zero);
-        private Ray _drag = new Ray(Vector3.zero, Vector3.zero);
-        private Ray _combinedLift = new Ray(Vector3.zero, Vector3.zero);
+        private ArrowData _centerOfThrust;
+        private ArrowData _centerOfLift;
+        private ArrowData _bodyLift;
+        private ArrowData _drag;
         private readonly CenterOfLiftQuery _centerOfLiftQuery = new CenterOfLiftQuery();
         private readonly CenterOfThrustQuery _centerOfThrustQuery = new CenterOfThrustQuery();
+        private readonly WeightedVectorAverager _positionAverager = new WeightedVectorAverager();
+        private readonly WeightedVectorAverager _directionAverager = new WeightedVectorAverager();
 
-        private static readonly Ray _zeroRay = new Ray(Vector3.zero, Vector3.zero);
+        private static readonly ArrowData _zeroArrowData = new ArrowData(Vector3.zero, Vector3.zero, 0f);
 
-        private const float CenterOfLiftCutoff = 0.1f;
-        private const float BodyLiftCutoff = 0.1f;
-        private const float DragCutoff = 0.1f;
+        private const float CenterOfLiftCutoff = 10f; // 0.1f
+        private const float BodyLiftCutoff = 15f; // 0.1f
+        private const float DragCutoff = 10f; // 0.1f
         private const float SphereScale = 0.5f;
         private const float ArrowLength = 4.0f;
+
+
+        public struct ArrowData
+        {
+            public Vector3 Position { get; }
+            public Vector3 Direction { get; }
+            public float Total { get; }
+
+
+            public ArrowData(Vector3 position, Vector3 direction, float total)
+            {
+                Position = position;
+                Direction = direction;
+                Total = total;
+            }
+        }
 
 
         private bool _markersEnabled;
@@ -116,17 +134,38 @@ namespace FlightMarkers
         }
 
 
+        public Vector3 TestOrigin;
+        public Vector3 TestDirection;
+        public bool TestEnabled = false;
+
+        private readonly VectorAverager _positionAvg = new VectorAverager();
+        private readonly VectorAverager _directionAvg = new VectorAverager();
+
+
+        [Flags]
+        private enum LiftFlag
+        {
+            None,
+            SurfaceLift,
+            BodyLift
+        }
+
+
+        private const LiftFlag CombineFlags = LiftFlag.SurfaceLift | LiftFlag.BodyLift;
+
+
         private void OnRenderObjectEvent()
         {
             if (Camera.current != Camera.main || MapView.MapIsEnabled) return;
 
-            if (CameraManager.Instance.currentCameraMode == CameraManager.CameraMode.IVA && vessel == FlightGlobals.ActiveVessel)
+            if (CameraManager.Instance.currentCameraMode == CameraManager.CameraMode.IVA &&
+                vessel == FlightGlobals.ActiveVessel)
                 return;
 
             if (vessel != FlightGlobals.ActiveVessel)
             {
                 if (Vector3.Distance(FlightGlobals.ActiveVessel.transform.position, vessel.transform.position) >
-                    PhysicsGlobals.Instance.VesselRangesDefault.orbit.unload)
+                    PhysicsGlobals.Instance.VesselRangesDefault.subOrbital.unload)
                 {
                     MarkersEnabled = false;
                     return;
@@ -139,76 +178,66 @@ namespace FlightMarkers
 
             DrawTools.DrawSphere(vessel.rootPart.transform.position, XKCDColors.Green, 0.25f);
 
-            var thrustProviders = vessel.FindPartModulesImplementing<IThrustProvider>();
-            _centerOfThrust = thrustProviders.Count > 0 ? FindCenterOfThrust(thrustProviders) : _zeroRay;
-
-            if (_centerOfThrust.direction != Vector3.zero)
+            _centerOfThrust = FindCenterOfThrust(vessel.rootPart);
+            if (_centerOfThrust.Direction != Vector3.zero)
             {
-                DrawTools.DrawSphere(_centerOfThrust.origin, XKCDColors.Magenta, 0.95f * SphereScale);
-                DrawTools.DrawArrow(_centerOfThrust.origin, _centerOfThrust.direction * ArrowLength, XKCDColors.Magenta);
+                DrawTools.DrawSphere(_centerOfThrust.Position, XKCDColors.Magenta, 0.95f * SphereScale);
+                DrawTools.DrawArrow(_centerOfThrust.Position, _centerOfThrust.Direction.normalized * ArrowLength, XKCDColors.Magenta);
             }
 
-            if (vessel.rootPart.staticPressureAtm > 0.0f)
+            if (vessel.staticPressurekPa > 0f)
             {
-                var liftProviders = vessel.FindPartModulesImplementing<ILiftProvider>();
-                _centerOfLift = liftProviders.Count > 0 ? FindCenterOfLift(liftProviders) : _zeroRay;
+                _centerOfLift = FindCenterOfLift(vessel.rootPart, vessel.srf_velocity, vessel.altitude,
+                    vessel.staticPressurekPa, vessel.atmDensity);
+                _bodyLift = FindBodyLift(vessel.rootPart);
+                _drag = FindDrag(vessel.rootPart);
 
-                _bodyLift = FindBodyLift();
+                var activeLift = LiftFlag.None;
+                if (_centerOfLift.Total > CenterOfLiftCutoff) activeLift |= LiftFlag.SurfaceLift;
+                if (_bodyLift.Total > BodyLiftCutoff) activeLift |= LiftFlag.BodyLift;
 
-                _drag = FindDrag();
-            }
-            else
-            {
-                _centerOfLift = _zeroRay;
-                _bodyLift = _zeroRay;
-                _drag = _zeroRay;
-            }
+                var drawCombined = _combineLift && (activeLift & CombineFlags) == CombineFlags;
 
-            if (_combineLift)
-            {
-                _combinedLift.origin = Vector3.zero;
-                _combinedLift.direction = Vector3.zero;
-                var count = 0;
-
-                if (!_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff))
+                if (drawCombined)
                 {
-                    _combinedLift.origin += _centerOfLift.origin;
-                    _combinedLift.direction += _centerOfLift.direction;
-                    count++;
+                    _positionAvg.Reset();
+                    _directionAvg.Reset();
+
+                    if ((activeLift & LiftFlag.SurfaceLift) == LiftFlag.SurfaceLift)
+                    {
+                        _positionAvg.Add(_centerOfLift.Position);
+                        _directionAvg.Add(_centerOfLift.Direction);
+                    }
+
+                    if ((activeLift & LiftFlag.BodyLift) == LiftFlag.BodyLift)
+                    {
+                        _positionAvg.Add(_bodyLift.Position);
+                        _directionAvg.Add(_bodyLift.Direction);
+                    }
+
+                    DrawTools.DrawSphere(_positionAvg.Get(), XKCDColors.Purple, 0.9f * SphereScale);
+                    DrawTools.DrawArrow(_positionAvg.Get(), _directionAvg.Get().normalized * ArrowLength, XKCDColors.Purple);
+                }
+                else
+                {
+                    if ((activeLift & LiftFlag.SurfaceLift) == LiftFlag.SurfaceLift)
+                    {
+                        DrawTools.DrawSphere(_centerOfLift.Position, XKCDColors.Blue, 0.9f * SphereScale);
+                        DrawTools.DrawArrow(_centerOfLift.Position, _centerOfLift.Direction.normalized * ArrowLength, XKCDColors.Blue);
+                    }
+
+                    if ((activeLift & LiftFlag.BodyLift) == LiftFlag.BodyLift)
+                    {
+                        DrawTools.DrawSphere(_bodyLift.Position, XKCDColors.Cyan, 0.85f * SphereScale);
+                        DrawTools.DrawArrow(_bodyLift.Position, _bodyLift.Direction.normalized * ArrowLength, XKCDColors.Cyan);
+                    }
                 }
 
-                if (!_bodyLift.direction.IsSmallerThan(BodyLiftCutoff))
+                if(_drag.Total > DragCutoff)
                 {
-                    _combinedLift.origin += _bodyLift.origin;
-                    _combinedLift.direction += _bodyLift.direction;
-                    count++;
+                    DrawTools.DrawSphere(_drag.Position, XKCDColors.Red, 0.8f * SphereScale);
+                    DrawTools.DrawArrow(_drag.Position, _drag.Direction.normalized * ArrowLength, XKCDColors.Red);
                 }
-
-                _combinedLift.origin /= count;
-                _combinedLift.direction /= count;
-
-                DrawTools.DrawSphere(_combinedLift.origin, XKCDColors.Purple, 0.9f * SphereScale);
-                DrawTools.DrawArrow(_combinedLift.origin, _combinedLift.direction * ArrowLength, XKCDColors.Purple);
-            }
-            else
-            {
-                if (!_centerOfLift.direction.IsSmallerThan(CenterOfLiftCutoff))
-                {
-                    DrawTools.DrawSphere(_centerOfLift.origin, XKCDColors.Blue, 0.9f * SphereScale);
-                    DrawTools.DrawArrow(_centerOfLift.origin, _centerOfLift.direction * ArrowLength, XKCDColors.Blue);
-                }
-
-                if (!_bodyLift.direction.IsSmallerThan(BodyLiftCutoff))
-                {
-                    DrawTools.DrawSphere(_bodyLift.origin, XKCDColors.Cyan, 0.85f * SphereScale);
-                    DrawTools.DrawArrow(_bodyLift.origin, _bodyLift.direction * ArrowLength, XKCDColors.Cyan);
-                }
-            }
-
-            if (!_drag.direction.IsSmallerThan(DragCutoff))
-            {
-                DrawTools.DrawSphere(_drag.origin, XKCDColors.Red, 0.8f * SphereScale);
-                DrawTools.DrawArrow(_drag.origin, _drag.direction * ArrowLength, XKCDColors.Red);
             }
 
             Profiler.EndSample();
@@ -240,21 +269,26 @@ namespace FlightMarkers
         }
 
 
-        private Ray FindCenterOfLift(IList<ILiftProvider> providers)
+        public ArrowData FindCenterOfLift(Part rootPart, Vector3 refVel, double refAlt, double refStp, double refDens)
         {
-            var refVel = vessel.lastVel;
-            var refAlt = vessel.altitude;
-            var refStp = FlightGlobals.getStaticPressure(refAlt);
-            var refTemp = FlightGlobals.getExternalTemperature(refAlt);
-            var refDens = FlightGlobals.getAtmDensity(refStp, refTemp);
+            _positionAverager.Reset();
+            _directionAverager.Reset();
 
-            var centerOfLift = Vector3.zero;
-            var directionOfLift = Vector3.zero;
-            var lift = 0f;
+            RecurseCenterOfLift(rootPart, refVel, refAlt, refStp, refDens);
 
-            for (var i = 0; i < providers.Count; i++)
+            return Mathf.Approximately(_positionAverager.GetTotalWeight(), 0f) ? _zeroArrowData :
+                new ArrowData(_positionAverager.Get(), _directionAverager.Get(), _positionAverager.GetTotalWeight());
+        }
+
+
+        private void RecurseCenterOfLift(Part part, Vector3 refVel, double refAlt, double refStp, double refDens)
+        {
+            var count = part.Modules.Count;
+            while (count-- > 0)
             {
-                if (!providers[i].IsLifting) continue;
+                var module = part.Modules[count] as ILiftProvider;
+                if (module == null)
+                    continue;
 
                 _centerOfLiftQuery.Reset();
                 _centerOfLiftQuery.refVector = refVel;
@@ -262,114 +296,183 @@ namespace FlightMarkers
                 _centerOfLiftQuery.refStaticPressure = refStp;
                 _centerOfLiftQuery.refAirDensity = refDens;
 
-                providers[i].OnCenterOfLiftQuery(_centerOfLiftQuery);
+                module.OnCenterOfLiftQuery(_centerOfLiftQuery);
 
-                centerOfLift += _centerOfLiftQuery.pos * _centerOfLiftQuery.lift;
-                directionOfLift += _centerOfLiftQuery.dir * _centerOfLiftQuery.lift;
-                lift += _centerOfLiftQuery.lift;
+                _positionAverager.Add(_centerOfLiftQuery.pos, _centerOfLiftQuery.lift);
+                _directionAverager.Add(_centerOfLiftQuery.dir, _centerOfLiftQuery.lift);
             }
 
-            if (lift < float.Epsilon) return new Ray(Vector3.zero, Vector3.zero);
-
-            var m = 1f / lift;
-            centerOfLift *= m;
-            directionOfLift *= m;
-
-            return new Ray(centerOfLift, directionOfLift);
+            count = part.children.Count;
+            for (var i = 0; i < count; i++)
+            {
+                RecurseCenterOfLift(part.children[i], refVel, refAlt, refStp, refDens);
+            }
         }
 
 
-        private Ray FindCenterOfThrust(IList<IThrustProvider> providers)
+        public ArrowData FindCenterOfThrust(Part rootPart)
         {
-            var centerOfThrust = Vector3.zero;
-            var directionOfThrust = Vector3.zero;
-            var thrust = 0f;
+            _positionAverager.Reset();
+            _directionAverager.Reset();
 
-            for (var i = 0; i < providers.Count; i++)
+            RecurseCenterOfThrust(rootPart);
+
+            return Mathf.Approximately(_positionAverager.GetTotalWeight(), 0f) ? _zeroArrowData :
+                new ArrowData(_positionAverager.Get(), _directionAverager.Get(), _positionAverager.GetTotalWeight());
+        }
+
+
+        private void RecurseCenterOfThrust(Part part)
+        {
+            var count = part.Modules.Count;
+            while (count-- > 0)
             {
-                if (!((ModuleEngines)providers[i]).isOperational) continue;
+                var module = part.Modules[count] as IThrustProvider;
+                if (module == null || !((ModuleEngines)module).isOperational)
+                    continue;
 
                 _centerOfThrustQuery.Reset();
 
-                providers[i].OnCenterOfThrustQuery(_centerOfThrustQuery);
+                module.OnCenterOfThrustQuery(_centerOfThrustQuery);
 
-                centerOfThrust += _centerOfThrustQuery.pos * _centerOfThrustQuery.thrust;
-                directionOfThrust += _centerOfThrustQuery.dir * _centerOfThrustQuery.thrust;
-                thrust += _centerOfThrustQuery.thrust;
+                _positionAverager.Add(_centerOfThrustQuery.pos, _centerOfThrustQuery.thrust);
+                _directionAverager.Add(_centerOfThrustQuery.dir, _centerOfThrustQuery.thrust);
             }
 
-            if (thrust < float.Epsilon) return _zeroRay;
-
-            var m = 1f / thrust;
-            centerOfThrust *= m;
-            directionOfThrust *= m;
-
-            return new Ray(centerOfThrust, directionOfThrust);
-        }
-
-
-        private Ray FindBodyLift()
-        {
-            var bodyLiftPosition = Vector3.zero;
-            var bodyLiftDirection = Vector3.zero;
-            var lift = 0f;
-
-            for (var i = 0; i < vessel.parts.Count; i++)
+            count = part.children.Count;
+            for (var i = 0; i < count; i++)
             {
-                var part = vessel.parts[i];
-
-                bodyLiftPosition += (part.transform.position + part.transform.rotation * part.bodyLiftLocalPosition)
-                    * part.bodyLiftLocalVector.magnitude;
-                bodyLiftDirection += (part.transform.localRotation * part.bodyLiftLocalVector)
-                    * part.bodyLiftLocalVector.magnitude;
-                lift += part.bodyLiftLocalVector.magnitude;
+                RecurseCenterOfThrust(part.children[i]);
             }
-
-            if (lift < float.Epsilon) return _zeroRay;
-
-            var m = 1f / lift;
-            bodyLiftPosition *= m;
-            bodyLiftDirection *= m;
-
-            return new Ray(bodyLiftPosition, bodyLiftDirection);
         }
 
 
-        private Ray FindDrag()
+        public ArrowData FindBodyLift(Part rootPart)
         {
-            var dragPosition = Vector3.zero;
-            var dragDirection = Vector3.zero;
-            var drag = 0f;
+            _positionAverager.Reset();
+            _directionAverager.Reset();
 
-            for (var i = 0; i < vessel.parts.Count; i++)
+            RecurseBodyLift(rootPart);
+
+            return Mathf.Approximately(_positionAverager.GetTotalWeight(), 0f) ? _zeroArrowData :
+                new ArrowData(_positionAverager.Get(), _directionAverager.Get(), _positionAverager.GetTotalWeight());
+
+            //return new ArrowData(bodyLiftPosition * scale, bodyLiftDirection * scale, bodyLiftTotal / (PhysicsGlobals.BodyLiftMultiplier * 2));
+        }
+
+
+        private void RecurseBodyLift(Part part)
+        {
+            //bodyLiftPosition += (part.transform.position + part.transform.rotation * part.bodyLiftLocalPosition) * part.bodyLiftLocalVector.magnitude;
+            //bodyLiftDirection += (part.transform.localRotation * part.bodyLiftLocalVector) * part.bodyLiftLocalVector.magnitude;
+            //bodyLiftTotal += part.bodyLiftLocalVector.magnitude;
+
+            //bodyLiftPosition += part.partTransform.TransformPoint(part.bodyLiftLocalPosition) * part.bodyLiftScalar;
+            //bodyLiftDirection += part.partTransform.TransformDirection(part.bodyLiftLocalVector) * part.bodyLiftScalar;
+            //bodyLiftTotal += part.bodyLiftScalar;
+
+            var direction = part.transform.TransformDirection(part.bodyLiftLocalVector);
+            _positionAverager.Add(part.partTransform.TransformPoint(part.bodyLiftLocalPosition), direction.magnitude);
+            _directionAverager.Add(direction, direction.magnitude);
+
+            var count = part.children.Count;
+            for (var i = 0; i < count; i++)
             {
-                var part = vessel.parts[i];
-                var liftModule = part.Modules.GetModule<ModuleLiftingSurface>();
+                RecurseBodyLift(part.children[i]);
+            }
+        }
 
-                if (liftModule)
-                {
-                    if (liftModule.useInternalDragModel)
-                    {
-                        dragPosition += (part.transform.position + part.transform.rotation * part.CoPOffset) * liftModule.dragScalar;
-                        dragDirection += (part.transform.localRotation * liftModule.dragForce) * liftModule.dragScalar;
-                        drag += liftModule.dragScalar;
 
-                        continue;
-                    }
-                }
+        public ArrowData FindDrag(Part rootPart)
+        {
+            _positionAverager.Reset();
+            _directionAverager.Reset();
 
-                dragPosition += (part.transform.position + part.transform.rotation * part.CoPOffset) * part.dragScalar;
-                dragDirection += (part.transform.localRotation * part.dragVectorDirLocal) * part.dragScalar;
-                drag += part.dragScalar;
+            RecurseDrag(rootPart);
+
+            return Mathf.Approximately(_positionAverager.GetTotalWeight(), 0f) ? _zeroArrowData :
+                new ArrowData(_positionAverager.Get(), _directionAverager.Get(), _positionAverager.GetTotalWeight());
+        }
+
+
+        private void RecurseDrag(Part part)
+        {
+            _positionAverager.Add(part.transform.position, part.dragScalar);
+            _directionAverager.Add(-part.dragVectorDir, part.dragScalar);
+
+            var count = part.Modules.Count;
+            while (count-- > 0)
+            {
+                var module = part.Modules[count] as ModuleLiftingSurface;
+                if (module == null) continue;
+
+                _positionAverager.Add(module.transform.position, module.dragScalar);
+                _directionAverager.Add(module.dragForce, module.dragScalar); // keep an eye on this, dragScalar wasn't used in the previous version.
             }
 
-            if (drag < float.Epsilon) return _zeroRay;
-
-            var m = 1f / drag;
-            dragPosition *= m;
-            dragDirection *= m;
-
-            return new Ray(dragPosition, dragDirection);
+            count = part.children.Count;
+            for (var i = 0; i < count; i++)
+            {
+                RecurseDrag(part.children[i]);
+            }
         }
+
+
+#if DEBUG
+        public bool DisplayDebugWindow = false;
+
+        private Rect _debugWindowPos;
+
+
+        public void OnGUI()
+        {
+            if (DisplayDebugWindow)
+            {
+                _debugWindowPos = GUILayout.Window("FlightMarkerDebug".GetHashCode(), _debugWindowPos, DrawDebugWindow,
+                    "Flight Markers");
+            }
+        }
+
+
+        private void DrawDebugWindow(int id)
+        {
+            var buttonStyle = new GUIStyle(GUI.skin.button)
+            {
+                padding = new RectOffset(5, 5, 3, 0),
+                margin = new RectOffset(1, 1, 1, 1),
+                stretchWidth = false,
+                stretchHeight = false
+            };
+
+            var labelStyle = new GUIStyle(GUI.skin.label)
+            {
+                wordWrap = false
+            };
+
+            GUILayout.BeginVertical();
+            GUILayout.FlexibleSpace();
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("X", buttonStyle))
+                DisplayDebugWindow = false;
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Lift: {_centerOfLift.Total}", labelStyle);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Body Lift: {_bodyLift.Total}", labelStyle);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Drag: {_drag.Total}", labelStyle);
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndVertical();
+
+            GUI.DragWindow();
+        }
+#endif
     }
 }
