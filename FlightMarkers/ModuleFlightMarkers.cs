@@ -1,8 +1,4 @@
-﻿using FlightMarkers.Utilities;
-using UnityEngine;
-
-
-// ReSharper disable UnusedMember.Local
+﻿// ReSharper disable UnusedMember.Local
 
 
 namespace FlightMarkers
@@ -42,8 +38,6 @@ namespace FlightMarkers
             requireFullControl = false, unfocusedRange = 100f)]
         public void Test()
         {
-            var mod = VesselFlightMarkers.VesselModules[vessel];
-            mod.DisplayDebugWindow = !mod.DisplayDebugWindow;
         }
 #endif
 
@@ -61,11 +55,10 @@ namespace FlightMarkers
         {
             if (HighLogic.LoadedScene != GameScenes.FLIGHT) return;
 
-            if (vessel != null)
-            {
-                VesselFlightMarkers.VesselModules[vessel].OnFlightMarkersChanged += OnFlightMarkersChanged;
-                VesselFlightMarkers.VesselModules[vessel].OnCombineLiftChanged += OnCombineLiftChanged;
-            }
+            if (vessel == null) return;
+
+            VesselFlightMarkers.VesselModules[vessel].OnFlightMarkersChanged += OnFlightMarkersChanged;
+            VesselFlightMarkers.VesselModules[vessel].OnCombineLiftChanged += OnCombineLiftChanged;
         }
 
 
@@ -86,11 +79,10 @@ namespace FlightMarkers
         {
             if (HighLogic.LoadedScene != GameScenes.FLIGHT) return;
 
-            if (vessel != null && VesselFlightMarkers.VesselModules.ContainsKey(vessel))
-            {
-                VesselFlightMarkers.VesselModules[vessel].OnFlightMarkersChanged -= OnFlightMarkersChanged;
-                VesselFlightMarkers.VesselModules[vessel].OnCombineLiftChanged -= OnCombineLiftChanged;
-            }
+            if (vessel == null || !VesselFlightMarkers.VesselModules.ContainsKey(vessel)) return;
+
+            VesselFlightMarkers.VesselModules[vessel].OnFlightMarkersChanged -= OnFlightMarkersChanged;
+            VesselFlightMarkers.VesselModules[vessel].OnCombineLiftChanged -= OnCombineLiftChanged;
         }
     }
 }
