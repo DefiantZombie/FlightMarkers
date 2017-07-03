@@ -21,8 +21,8 @@ namespace FlightMarkers
 
         public static Dictionary<Strings, string> LocalStrings;
         public static FlightMarkers Instance { get; private set; }
-        public static event Action OnUpdateEvent = delegate { };
-        public static event Action OnRenderObjectEvent = delegate { };
+        public static event Action OnUpdateEvent;
+        public static event Action OnRenderObjectEvent;
          
 
         private void Awake()
@@ -34,6 +34,7 @@ namespace FlightMarkers
             }
 
             LocalStrings = new Dictionary<Strings, string>();
+
             OnLanguageSwitched();
 
             Instance = this;
@@ -105,13 +106,13 @@ namespace FlightMarkers
 
         private void Update()
         {
-            OnUpdateEvent();
+            OnUpdateEvent?.Invoke();
         }
 
 
         private void OnRenderObject()
         {
-            OnRenderObjectEvent();
+            OnRenderObjectEvent?.Invoke();
         }
 
 
@@ -131,8 +132,8 @@ namespace FlightMarkers
             GameEvents.onShowUI.Remove(OnShowUI);
             GameEvents.OnGameSettingsApplied.Remove(OnGameSettingsApplied);
 
-            OnUpdateEvent = delegate { }; // Pretty sure these need to be NULL and init to empty in Awake
-            OnRenderObjectEvent = delegate { };
+            OnUpdateEvent = null;
+            OnRenderObjectEvent = null;
             Instance = null;
         }
     }

@@ -256,6 +256,9 @@ namespace FlightMarkers
             GameEvents.onFlightReady.Remove(OnFlightReady);
 
             FlightMarkers.OnRenderObjectEvent -= OnRenderObjectEvent;
+
+            OnFlightMarkersChanged = null;
+            OnCombineLiftChanged = null;
         }
 
 
