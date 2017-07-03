@@ -23,6 +23,8 @@ namespace FlightMarkers
         private ArrowData _drag;
         private readonly CenterOfLiftQuery _centerOfLiftQuery = new CenterOfLiftQuery();
         private readonly CenterOfThrustQuery _centerOfThrustQuery = new CenterOfThrustQuery();
+        private readonly WeightedVectorAverager _positionAverager = new WeightedVectorAverager();
+        private readonly WeightedVectorAverager _directionAverager = new WeightedVectorAverager();
 
         private static readonly ArrowData _zeroArrowData = new ArrowData(Vector3.zero, Vector3.zero, 0f);
 
@@ -269,24 +271,17 @@ namespace FlightMarkers
 
         public ArrowData FindCenterOfLift(Part rootPart, Vector3 refVel, double refAlt, double refStp, double refDens)
         {
-            var liftPosition = Vector3.zero;
-            var liftDirection = Vector3.zero;
-            var liftTotal = 0f;
+            _positionAverager.Reset();
+            _directionAverager.Reset();
 
-            RecurseCenterOfLift(rootPart, refVel,
-                ref liftPosition, ref liftDirection, ref liftTotal,
-                refAlt, refStp, refDens);
+            RecurseCenterOfLift(rootPart, refVel, refAlt, refStp, refDens);
 
-            if (Mathf.Approximately(liftTotal, 0f))
-                return _zeroArrowData;
-
-            var scale = 1f / liftTotal;
-            return new ArrowData(liftPosition * scale, liftDirection * scale, liftTotal);
+            return Mathf.Approximately(_positionAverager.GetTotalWeight(), 0f) ? _zeroArrowData :
+                new ArrowData(_positionAverager.Get(), _directionAverager.Get(), _positionAverager.GetTotalWeight());
         }
 
 
-        private void RecurseCenterOfLift(Part part, Vector3 refVel, ref Vector3 centerOfLift,
-            ref Vector3 directionOfLift, ref float totalLift, double refAlt, double refStp, double refDens)
+        private void RecurseCenterOfLift(Part part, Vector3 refVel, double refAlt, double refStp, double refDens)
         {
             var count = part.Modules.Count;
             while (count-- > 0)
@@ -303,38 +298,31 @@ namespace FlightMarkers
 
                 module.OnCenterOfLiftQuery(_centerOfLiftQuery);
 
-                centerOfLift += _centerOfLiftQuery.pos * _centerOfLiftQuery.lift;
-                directionOfLift += _centerOfLiftQuery.dir * _centerOfLiftQuery.lift;
-                totalLift += _centerOfLiftQuery.lift;
+                _positionAverager.Add(_centerOfLiftQuery.pos, _centerOfLiftQuery.lift);
+                _directionAverager.Add(_centerOfLiftQuery.dir, _centerOfLiftQuery.lift);
             }
 
             count = part.children.Count;
             for (var i = 0; i < count; i++)
             {
-                RecurseCenterOfLift(part.children[i], refVel, ref centerOfLift, ref directionOfLift, ref totalLift,
-                    refAlt, refStp, refDens);
+                RecurseCenterOfLift(part.children[i], refVel, refAlt, refStp, refDens);
             }
         }
 
 
         public ArrowData FindCenterOfThrust(Part rootPart)
         {
-            var thrustPosition = Vector3.zero;
-            var thrustDirection = Vector3.zero;
-            var thrustTotal = 0f;
+            _positionAverager.Reset();
+            _directionAverager.Reset();
 
-            RecurseCenterOfThrust(rootPart, ref thrustPosition, ref thrustDirection, ref thrustTotal);
+            RecurseCenterOfThrust(rootPart);
 
-            if (Mathf.Approximately(thrustTotal, 0f))
-                return _zeroArrowData;
-
-            var scale = 1f / thrustTotal;
-            return new ArrowData(thrustPosition * scale, thrustDirection * scale, thrustTotal);
+            return Mathf.Approximately(_positionAverager.GetTotalWeight(), 0f) ? _zeroArrowData :
+                new ArrowData(_positionAverager.Get(), _directionAverager.Get(), _positionAverager.GetTotalWeight());
         }
 
 
-        private void RecurseCenterOfThrust(Part part, ref Vector3 thrustPosition, ref Vector3 thrustDirection,
-            ref float thrustTotal)
+        private void RecurseCenterOfThrust(Part part)
         {
             var count = part.Modules.Count;
             while (count-- > 0)
@@ -347,38 +335,33 @@ namespace FlightMarkers
 
                 module.OnCenterOfThrustQuery(_centerOfThrustQuery);
 
-                thrustPosition += _centerOfThrustQuery.pos * _centerOfThrustQuery.thrust;
-                thrustDirection += _centerOfThrustQuery.dir * _centerOfThrustQuery.thrust;
-                thrustTotal += _centerOfThrustQuery.thrust;
+                _positionAverager.Add(_centerOfThrustQuery.pos, _centerOfThrustQuery.thrust);
+                _directionAverager.Add(_centerOfThrustQuery.dir, _centerOfThrustQuery.thrust);
             }
 
             count = part.children.Count;
             for (var i = 0; i < count; i++)
             {
-                RecurseCenterOfThrust(part.children[i], ref thrustPosition, ref thrustDirection, ref thrustTotal);
+                RecurseCenterOfThrust(part.children[i]);
             }
         }
 
 
         public ArrowData FindBodyLift(Part rootPart)
         {
-            var bodyLiftPosition = new Vector3();
-            var bodyLiftDirection = new Vector3();
-            var bodyLiftTotal = 0f;
+            _positionAverager.Reset();
+            _directionAverager.Reset();
 
-            RecurseBodyLift(rootPart, ref bodyLiftPosition, ref bodyLiftDirection, ref bodyLiftTotal);
+            RecurseBodyLift(rootPart);
 
-            if (Mathf.Approximately(bodyLiftTotal, 0f))
-                return _zeroArrowData;
+            return Mathf.Approximately(_positionAverager.GetTotalWeight(), 0f) ? _zeroArrowData :
+                new ArrowData(_positionAverager.Get(), _directionAverager.Get(), _positionAverager.GetTotalWeight());
 
-            var scale = 1f / bodyLiftTotal;
             //return new ArrowData(bodyLiftPosition * scale, bodyLiftDirection * scale, bodyLiftTotal / (PhysicsGlobals.BodyLiftMultiplier * 2));
-            return new ArrowData(bodyLiftPosition * scale, bodyLiftDirection * scale, bodyLiftTotal);
         }
 
 
-        private void RecurseBodyLift(Part part, ref Vector3 bodyLiftPosition, ref Vector3 bodyLiftDirection,
-            ref float bodyLiftTotal)
+        private void RecurseBodyLift(Part part)
         {
             //bodyLiftPosition += (part.transform.position + part.transform.rotation * part.bodyLiftLocalPosition) * part.bodyLiftLocalVector.magnitude;
             //bodyLiftDirection += (part.transform.localRotation * part.bodyLiftLocalVector) * part.bodyLiftLocalVector.magnitude;
@@ -389,40 +372,33 @@ namespace FlightMarkers
             //bodyLiftTotal += part.bodyLiftScalar;
 
             var direction = part.transform.TransformDirection(part.bodyLiftLocalVector);
-            var magnitude = direction.magnitude;
-            bodyLiftPosition += part.partTransform.TransformPoint(part.bodyLiftLocalPosition) * magnitude;
-            bodyLiftDirection += direction * magnitude;
-            bodyLiftTotal += magnitude;
+            _positionAverager.Add(part.partTransform.TransformPoint(part.bodyLiftLocalPosition), direction.magnitude);
+            _directionAverager.Add(direction, direction.magnitude);
 
             var count = part.children.Count;
             for (var i = 0; i < count; i++)
             {
-                RecurseBodyLift(part.children[i], ref bodyLiftPosition, ref bodyLiftDirection, ref bodyLiftTotal);
+                RecurseBodyLift(part.children[i]);
             }
         }
 
 
         public ArrowData FindDrag(Part rootPart)
         {
-            var dragPosition = new Vector3();
-            var dragDirection = new Vector3();
-            var dragTotal = 0f;
+            _positionAverager.Reset();
+            _directionAverager.Reset();
 
-            RecurseDrag(rootPart, ref dragPosition, ref dragDirection, ref dragTotal);
+            RecurseDrag(rootPart);
 
-            if (Mathf.Approximately(dragTotal, 0f))
-                return _zeroArrowData;
-
-            var scale = 1f / dragTotal;
-            return new ArrowData(dragPosition * scale, dragDirection * scale, dragTotal);
+            return Mathf.Approximately(_positionAverager.GetTotalWeight(), 0f) ? _zeroArrowData :
+                new ArrowData(_positionAverager.Get(), _directionAverager.Get(), _positionAverager.GetTotalWeight());
         }
 
 
-        private void RecurseDrag(Part part, ref Vector3 dragPosition, ref Vector3 dragDirection, ref float dragTotal)
+        private void RecurseDrag(Part part)
         {
-            dragPosition += part.transform.position * part.dragScalar;
-            dragDirection += -part.dragVectorDir * part.dragScalar;
-            dragTotal += part.dragScalar;
+            _positionAverager.Add(part.transform.position, part.dragScalar);
+            _directionAverager.Add(-part.dragVectorDir, part.dragScalar);
 
             var count = part.Modules.Count;
             while (count-- > 0)
@@ -430,15 +406,14 @@ namespace FlightMarkers
                 var module = part.Modules[count] as ModuleLiftingSurface;
                 if (module == null) continue;
 
-                dragPosition += module.transform.position * module.dragScalar;
-                dragDirection += module.dragForce;
-                dragTotal += module.dragScalar;
+                _positionAverager.Add(module.transform.position, module.dragScalar);
+                _directionAverager.Add(module.dragForce, module.dragScalar); // keep an eye on this, dragScalar wasn't used in the previous version.
             }
 
             count = part.children.Count;
             for (var i = 0; i < count; i++)
             {
-                RecurseDrag(part.children[i], ref dragPosition, ref dragDirection, ref dragTotal);
+                RecurseDrag(part.children[i]);
             }
         }
 
@@ -495,6 +470,7 @@ namespace FlightMarkers
             GUILayout.EndHorizontal();
 
             GUILayout.EndVertical();
+
             GUI.DragWindow();
         }
 #endif
