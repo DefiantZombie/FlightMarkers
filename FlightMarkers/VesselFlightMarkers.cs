@@ -10,6 +10,9 @@ namespace FlightMarkers
     public class VesselFlightMarkers : VesselModule
     {
         public static Dictionary<Vessel, VesselFlightMarkers> VesselModules;
+        public static int CenterOfLiftCutoff = 10;
+        public static int BodyLiftCutoff = 15;
+        public static int DragCutoff = 10;
 
         public event Action<bool> OnFlightMarkersChanged;
         public event Action<bool> OnCombineLiftChanged;
@@ -29,9 +32,6 @@ namespace FlightMarkers
         private static readonly ArrowData _zeroArrowData = new ArrowData(Vector3.zero, Vector3.zero, 0f);
 
         private const LiftFlag CombineFlags = LiftFlag.SurfaceLift | LiftFlag.BodyLift;
-        private const float CenterOfLiftCutoff = 10f;
-        private const float BodyLiftCutoff = 15f;
-        private const float DragCutoff = 10f;
         private const float SphereScale = 0.5f;
         private const float ArrowLength = 4.0f;
 
@@ -139,8 +139,8 @@ namespace FlightMarkers
         {
             Logging.DebugLog($"[{vessel?.GetName()}]VesselFlightMarkers.OnFlightReady()");
 
+            CombineLift = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().DefaultCombine;
             OnFlightMarkersChanged?.Invoke(_markersEnabled);
-            OnCombineLiftChanged?.Invoke(_combineLift);
         }
 
 

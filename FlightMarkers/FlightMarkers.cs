@@ -42,9 +42,12 @@ namespace FlightMarkers
 
         private void Start()
         {
+            UpdateSettings();
+
             GameEvents.onLanguageSwitched.Add(OnLanguageSwitched);
             GameEvents.onHideUI.Add(OnHideUI);
             GameEvents.onShowUI.Add(OnShowUI);
+            GameEvents.OnGameSettingsApplied.Add(OnGameSettingsApplied);
         }
 
 
@@ -86,6 +89,20 @@ namespace FlightMarkers
         }
 
 
+        private void OnGameSettingsApplied()
+        {
+            UpdateSettings();
+        }
+
+
+        private void UpdateSettings()
+        {
+            VesselFlightMarkers.CenterOfLiftCutoff = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().LiftCutoff;
+            VesselFlightMarkers.BodyLiftCutoff = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().BodyLiftCutoff;
+            VesselFlightMarkers.DragCutoff = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().DragCutoff;
+        }
+
+
         private void Update()
         {
             OnUpdateEvent();
@@ -112,8 +129,9 @@ namespace FlightMarkers
             GameEvents.onLanguageSwitched.Remove(OnLanguageSwitched);
             GameEvents.onHideUI.Remove(OnHideUI);
             GameEvents.onShowUI.Remove(OnShowUI);
+            GameEvents.OnGameSettingsApplied.Remove(OnGameSettingsApplied);
 
-            OnUpdateEvent = delegate { };
+            OnUpdateEvent = delegate { }; // Pretty sure these need to be NULL and init to empty in Awake
             OnRenderObjectEvent = delegate { };
             Instance = null;
         }

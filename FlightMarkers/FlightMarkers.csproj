@@ -48,6 +48,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="FlightMarkers.cs" />
+    <Compile Include="Settings.cs" />
     <Compile Include="Utilities\Logging.cs" />
     <Compile Include="Utilities\VectorAverager.cs" />
     <Compile Include="Utilities\WeightedVectorAverager.cs" />
