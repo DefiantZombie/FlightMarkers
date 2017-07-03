@@ -1,2 +1,6 @@
+0.2.0.0
+	Reworked the entire math chain. Most values are pulled from better places. Garbage generation is now zero. (Glares at the SetPass calls)
+	Fixed possible NREs.
+	Added "difficulty" settings.
 0.1.0.0
     Initial pre-release.
