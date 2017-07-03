@@ -22,6 +22,10 @@ Adds information markers previously available in the editors to the flight scene
 
 After the Advanced Tweakables option is enabled the Flight Markers option becomes available on the part action menu in the flight scene. Toggle this option to display the markers. Once enabled there is also an option to display the average of the body lift and surface lift, or split them.
 
+### Settings
+
+The lift and drag marker cuton/offs can be adjusted using the game difficulty options screen. These settings are saved per-save.
+
 ## Notes
 
 - A lot of the math behind this mod is rough (opinion) and displays oddities in certain situations. It's planned to make things better over time.
