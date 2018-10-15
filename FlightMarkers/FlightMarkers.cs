@@ -49,6 +49,17 @@ namespace FlightMarkers
             GameEvents.onHideUI.Add(OnHideUI);
             GameEvents.onShowUI.Add(OnShowUI);
             GameEvents.OnGameSettingsApplied.Add(OnGameSettingsApplied);
+            GameEvents.onVesselGoOnRails.Add(OnVesselGoOnRails);
+        }
+
+
+        private void OnVesselGoOnRails(Vessel v)
+        {
+            var vfm = VesselFlightMarkers.VesselModules[v];
+
+            if (vfm == null) return;
+
+            vfm.MarkersEnabled = false;
         }
 
 
@@ -70,8 +81,6 @@ namespace FlightMarkers
 
         private void OnHideUI()
         {
-            Logging.DebugLog("FlightMarkers.OnHideUI()");
-
             foreach (var module in VesselFlightMarkers.VesselModules.Values)
             {
                 module.Hidden = true;
@@ -81,8 +90,6 @@ namespace FlightMarkers
 
         private void OnShowUI()
         {
-            Logging.DebugLog("FlightMarkers.OnShowUI()");
-
             foreach (var module in VesselFlightMarkers.VesselModules.Values)
             {
                 module.Hidden = false;
