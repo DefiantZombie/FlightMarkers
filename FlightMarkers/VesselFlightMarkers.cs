@@ -124,8 +124,6 @@ namespace FlightMarkers
         {
             if (HighLogic.LoadedScene != GameScenes.FLIGHT) return;
 
-            Logging.DebugLog($"[{vessel.GetName()}]VesselFlightMarkers.OnStart()");
-
             if (VesselModules.ContainsKey(vessel))
                 VesselModules[vessel] = this;
             else
@@ -137,8 +135,6 @@ namespace FlightMarkers
 
         private void OnFlightReady()
         {
-            Logging.DebugLog($"[{vessel?.GetName()}]VesselFlightMarkers.OnFlightReady()");
-
             CombineLift = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().DefaultCombine;
             OnFlightMarkersChanged?.Invoke(_markersEnabled);
         }
@@ -248,8 +244,6 @@ namespace FlightMarkers
 
         private void OnDestroy()
         {
-            Logging.DebugLog($"[{vessel?.GetName()}]VesselFlightMarkers.OnDestroy()");
-
             if (vessel != null && VesselModules.ContainsKey(vessel))
                 VesselModules.Remove(vessel);
 

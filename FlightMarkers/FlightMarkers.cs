@@ -70,8 +70,6 @@ namespace FlightMarkers
 
         private void OnHideUI()
         {
-            Logging.DebugLog("FlightMarkers.OnHideUI()");
-
             foreach (var module in VesselFlightMarkers.VesselModules.Values)
             {
                 module.Hidden = true;
@@ -81,8 +79,6 @@ namespace FlightMarkers
 
         private void OnShowUI()
         {
-            Logging.DebugLog("FlightMarkers.OnShowUI()");
-
             foreach (var module in VesselFlightMarkers.VesselModules.Values)
             {
                 module.Hidden = false;
