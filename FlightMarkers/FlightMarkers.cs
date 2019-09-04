@@ -3,145 +3,142 @@ using KSP.Localization;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-// ReSharper disable UnusedMember.Local
-
 
 namespace FlightMarkers
 {
-    [KSPAddon(KSPAddon.Startup.Flight, false)]
-    public class FlightMarkers : MonoBehaviour
-    {
-        public enum Strings
-        {
-            FlightMarkersOn,
-            FlightMarkersOff,
-            CombineLiftOn,
-            CombineLiftOff
-        }
+	[KSPAddon(KSPAddon.Startup.Flight, false)]
+	public class FlightMarkers : MonoBehaviour
+	{
+		public enum Strings
+		{
+			FlightMarkersOn,
+			FlightMarkersOff,
+			CombineLiftOn,
+			CombineLiftOff
+		}
 
-        public static Dictionary<Strings, string> LocalStrings;
-        public static FlightMarkers Instance { get; private set; }
-        public static event Action OnUpdateEvent;
-        public static event Action OnRenderObjectEvent;
-         
-
-        private void Awake()
-        {
-            if (Instance != null)
-            {
-                DestroyImmediate(this);
-                return;
-            }
-
-            LocalStrings = new Dictionary<Strings, string>();
-
-            OnLanguageSwitched();
-
-            Instance = this;
-        }
+		public static Dictionary<Strings, string> LocalStrings;
+		public static FlightMarkers Instance { get; private set; }
+		public static event Action OnUpdateEvent;
+		public static event Action OnRenderObjectEvent;
 
 
-        private void Start()
-        {
-            UpdateSettings();
+		private void Awake()
+		{
+			if (Instance != null)
+			{
+				DestroyImmediate(this);
+				return;
+			}
 
-            GameEvents.onLanguageSwitched.Add(OnLanguageSwitched);
-            GameEvents.onHideUI.Add(OnHideUI);
-            GameEvents.onShowUI.Add(OnShowUI);
-            GameEvents.OnGameSettingsApplied.Add(OnGameSettingsApplied);
-            GameEvents.onVesselGoOnRails.Add(OnVesselGoOnRails);
-        }
+			LocalStrings = new Dictionary<Strings, string>();
 
+			OnLanguageSwitched();
 
-        private void OnVesselGoOnRails(Vessel v)
-        {
-            var vfm = VesselFlightMarkers.VesselModules[v];
-
-            if (vfm == null) return;
-
-            vfm.MarkersEnabled = false;
-        }
+			Instance = this;
+		}
 
 
-        private void OnLanguageSwitched()
-        {
-            LocalStrings[Strings.FlightMarkersOn] = Localizer.Format("#SSC_FM_000001",
-                Localizer.GetStringByTag("#SSC_FM_000002"));
+		private void Start()
+		{
+			UpdateSettings();
 
-            LocalStrings[Strings.FlightMarkersOff] = Localizer.Format("#SSC_FM_000001",
-                Localizer.GetStringByTag("#SSC_FM_000003"));
-
-            LocalStrings[Strings.CombineLiftOn] = Localizer.Format("#SSC_FM_000004",
-                Localizer.GetStringByTag("#SSC_FM_000002"));
-
-            LocalStrings[Strings.CombineLiftOff] = Localizer.Format("#SSC_FM_000004",
-                Localizer.GetStringByTag("#SSC_FM_000003"));
-        }
+			GameEvents.onLanguageSwitched.Add(OnLanguageSwitched);
+			GameEvents.onHideUI.Add(OnHideUI);
+			GameEvents.onShowUI.Add(OnShowUI);
+			GameEvents.OnGameSettingsApplied.Add(OnGameSettingsApplied);
+			GameEvents.onVesselGoOnRails.Add(OnVesselGoOnRails);
+		}
 
 
-        private void OnHideUI()
-        {
-            foreach (var module in VesselFlightMarkers.VesselModules.Values)
-            {
-                module.Hidden = true;
-            }
-        }
+		private void OnVesselGoOnRails(Vessel v)
+		{
+			var vfm = VesselFlightMarkers.VesselModules[v];
+
+			if (vfm == null) return;
+
+			vfm.MarkersEnabled = false;
+		}
 
 
-        private void OnShowUI()
-        {
-            foreach (var module in VesselFlightMarkers.VesselModules.Values)
-            {
-                module.Hidden = false;
-            }
-        }
+		private void OnLanguageSwitched()
+		{
+			LocalStrings[Strings.FlightMarkersOn] = Localizer.Format("#SSC_FM_000001",
+				Localizer.GetStringByTag("#SSC_FM_000002"));
+
+			LocalStrings[Strings.FlightMarkersOff] = Localizer.Format("#SSC_FM_000001",
+				Localizer.GetStringByTag("#SSC_FM_000003"));
+
+			LocalStrings[Strings.CombineLiftOn] = Localizer.Format("#SSC_FM_000004",
+				Localizer.GetStringByTag("#SSC_FM_000002"));
+
+			LocalStrings[Strings.CombineLiftOff] = Localizer.Format("#SSC_FM_000004",
+				Localizer.GetStringByTag("#SSC_FM_000003"));
+		}
 
 
-        private void OnGameSettingsApplied()
-        {
-            UpdateSettings();
-        }
+		private void OnHideUI()
+		{
+			foreach (var module in VesselFlightMarkers.VesselModules.Values)
+			{
+				module.Hidden = true;
+			}
+		}
 
 
-        private void UpdateSettings()
-        {
-            VesselFlightMarkers.CenterOfLiftCutoff = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().LiftCutoff;
-            VesselFlightMarkers.BodyLiftCutoff = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().BodyLiftCutoff;
-            VesselFlightMarkers.DragCutoff = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().DragCutoff;
-        }
+		private void OnShowUI()
+		{
+			foreach (var module in VesselFlightMarkers.VesselModules.Values)
+			{
+				module.Hidden = false;
+			}
+		}
 
 
-        private void Update()
-        {
-            OnUpdateEvent?.Invoke();
-        }
+		private void OnGameSettingsApplied()
+		{
+			UpdateSettings();
+		}
 
 
-        private void OnRenderObject()
-        {
-            OnRenderObjectEvent?.Invoke();
-        }
+		private void UpdateSettings()
+		{
+			VesselFlightMarkers.CenterOfLiftCutoff = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().LiftCutoff;
+			VesselFlightMarkers.BodyLiftCutoff = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().BodyLiftCutoff;
+			VesselFlightMarkers.DragCutoff = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().DragCutoff;
+		}
 
 
-        // ReSharper disable once InconsistentNaming
-        private void OnGUI()
-        {
-            DrawTools.NewFrame();
-        }
+		private void Update()
+		{
+			OnUpdateEvent?.Invoke();
+		}
 
 
-        private void OnDestroy()
-        {
-            enabled = false;
+		private void OnRenderObject()
+		{
+			OnRenderObjectEvent?.Invoke();
+		}
 
-            GameEvents.onLanguageSwitched.Remove(OnLanguageSwitched);
-            GameEvents.onHideUI.Remove(OnHideUI);
-            GameEvents.onShowUI.Remove(OnShowUI);
-            GameEvents.OnGameSettingsApplied.Remove(OnGameSettingsApplied);
 
-            OnUpdateEvent = null;
-            OnRenderObjectEvent = null;
-            Instance = null;
-        }
-    }
+		private void OnGUI()
+		{
+			DrawTools.NewFrame();
+		}
+
+
+		private void OnDestroy()
+		{
+			enabled = false;
+
+			GameEvents.onLanguageSwitched.Remove(OnLanguageSwitched);
+			GameEvents.onHideUI.Remove(OnHideUI);
+			GameEvents.onShowUI.Remove(OnShowUI);
+			GameEvents.OnGameSettingsApplied.Remove(OnGameSettingsApplied);
+
+			OnUpdateEvent = null;
+			OnRenderObjectEvent = null;
+			Instance = null;
+		}
+	}
 }
