@@ -1,1 +1,2 @@
-- Moved MM to correct directory (#4)
+- Unlocked built-in control direction function on command modules
+- Added command part highlighting (setting in game settings)
