@@ -25,5 +25,9 @@
         [GameParameters.CustomParameterUI("Combine by default",
             toolTip = "If true, the lift arrows will combine by default.")]
         public bool DefaultCombine = true;
+
+		[GameParameters.CustomParameterUI("Highlight on switch",
+			toolTip = "If true, highlight the control part when switching.")]
+		public bool HighlightOnSwitch = true;
     }
 }
