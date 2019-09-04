@@ -1,5 +1,6 @@
 ﻿using FlightMarkers.Utilities;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Profiling;
@@ -37,8 +38,32 @@ namespace FlightMarkers
         private const float SphereScale = 0.5f;
         private const float ArrowLength = 4.0f;
 
+		#region ControlFromWhere
 
-        private struct ArrowData
+		protected const float _highlightTime = 3.0f;
+		protected WaitForSeconds _highlightWait;
+		protected Coroutine _highlightCoroutine;
+		protected Part _controlPart;
+
+		public event Action<bool> OnHighlightOnSwitchChanged;
+
+		private bool _highlightOnSwitch;
+		public bool HighlightOnSwitch
+		{
+			get { return _highlightOnSwitch; }
+			set
+			{
+				bool oldValue = _highlightOnSwitch;
+				_highlightOnSwitch = value;
+
+				if(oldValue != value)
+					OnHighlightOnSwitchChanged?.Invoke(value);
+			}
+		}
+
+		#endregion
+
+		private struct ArrowData
         {
             public Vector3 Position { get; }
             public Vector3 Direction { get; }
@@ -119,6 +144,9 @@ namespace FlightMarkers
         {
             if (VesselModules == null)
                 VesselModules = new Dictionary<Vessel, VesselFlightMarkers>();
+
+			// ControlFromWhere
+			_highlightWait = new WaitForSeconds(_highlightTime);
         }
 
 
@@ -132,6 +160,9 @@ namespace FlightMarkers
                 VesselModules.Add(vessel, this);
 
             GameEvents.onFlightReady.Add(OnFlightReady);
+
+			// ControlFromWhere
+			GameEvents.OnGameSettingsApplied.Add(OnGameSettingsApplied);
         }
 
 
@@ -139,6 +170,9 @@ namespace FlightMarkers
         {
             CombineLift = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().DefaultCombine;
             OnFlightMarkersChanged?.Invoke(_markersEnabled);
+
+			// ControlFromWhere
+			HighlightOnSwitch = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().HighlightOnSwitch;
         }
 
 
@@ -255,6 +289,9 @@ namespace FlightMarkers
 
             OnFlightMarkersChanged = null;
             OnCombineLiftChanged = null;
+
+			// ControlFromWhere
+			GameEvents.OnGameSettingsApplied.Remove(OnGameSettingsApplied);
         }
 
 
@@ -405,5 +442,63 @@ namespace FlightMarkers
                 RecurseDrag(part.children[i]);
             }
         }
-    }
+
+		#region ControlFromWhere
+
+		public void HighlightPart()
+		{
+			Part controlPart = vessel.GetReferenceTransformPart();
+			if (controlPart == null) return;
+
+			HighlightPart(controlPart);
+		}
+
+		public void HighlightPart(Transform controlTransform)
+		{
+			Part controlPart = controlTransform.GetComponent<Part>() ??
+				controlTransform.GetComponentInParent<Part>();
+			if (controlPart == null) return;
+
+			HighlightPart(controlPart);
+		}
+
+		public void HighlightPart(Part controlPart)
+		{
+			if(_highlightCoroutine != null)
+			{
+				StopCoroutine(_highlightCoroutine);
+				_highlightCoroutine = null;
+
+				_controlPart?.Highlight(false);
+			}
+
+			_controlPart = controlPart;
+			_controlPart.highlightColor = XKCDColors.AquaBlue;
+			_controlPart.highlightType = Part.HighlightType.AlwaysOn;
+			_controlPart.Highlight(true);
+
+			_highlightCoroutine = StartCoroutine(HighlightTimeout(_controlPart));
+		}
+
+		protected IEnumerator HighlightTimeout(Part controlPart)
+		{
+			yield return _highlightWait;
+			
+			if(controlPart != null)
+			{
+				controlPart.Highlight(false);
+				controlPart.highlightColor = Part.defaultHighlightPart;
+				controlPart.highlightType = Part.HighlightType.OnMouseOver;
+			}
+
+			_highlightCoroutine = null;
+		}
+
+		protected void OnGameSettingsApplied()
+		{
+			HighlightOnSwitch = HighLogic.CurrentGame.Parameters.CustomParams<Settings>().HighlightOnSwitch;
+		}
+
+		#endregion
+	}
 }

@@ -1,4 +1,5 @@
-﻿// ReSharper disable UnusedMember.Local
+using UnityEngine;
+// ReSharper disable UnusedMember.Local
 
 
 namespace FlightMarkers
@@ -48,7 +49,24 @@ namespace FlightMarkers
 
             Events["ToggleFlightMarkers"].guiName = FlightMarkers.LocalStrings[FlightMarkers.Strings.FlightMarkersOn];
             Events["ToggleCombineLift"].guiName = FlightMarkers.LocalStrings[FlightMarkers.Strings.CombineLiftOn];
-        }
+
+			// ControlFromWhere
+			ModuleCommand commandModule = part.FindModuleImplementing<ModuleCommand>();
+			if (commandModule != null)
+			{
+				BaseEvent toggleEvent = commandModule.Events["ToggleControlPointVisual"];
+				if (toggleEvent != null)
+				{
+					toggleEvent.active = true;
+					toggleEvent.guiActive = true;
+					toggleEvent.guiActiveEditor = true;
+				}
+				else
+				{
+					Debug.LogError("[FlightMarkers] ERROR: ToggleControlPointVisual not found");
+				}
+			}
+		}
 
 
         public override void OnStartFinished(StartState state)
@@ -59,7 +77,13 @@ namespace FlightMarkers
 
             VesselFlightMarkers.VesselModules[vessel].OnFlightMarkersChanged += OnFlightMarkersChanged;
             VesselFlightMarkers.VesselModules[vessel].OnCombineLiftChanged += OnCombineLiftChanged;
-        }
+
+			// ControlFromWhere
+			VesselFlightMarkers.VesselModules[vessel].OnHighlightOnSwitchChanged += OnHighlightOnSwitchChanged;
+
+			if (VesselFlightMarkers.VesselModules[vessel].HighlightOnSwitch)
+				GameEvents.onVesselReferenceTransformSwitch.Add(OnVesselReferenceTransformSwitch);
+		}
 
 
         private void OnFlightMarkersChanged(bool markersEnabled)
@@ -75,6 +99,37 @@ namespace FlightMarkers
         }
 
 
+		#region ControlFromWhere
+
+		[KSPEvent(active = true, advancedTweakable = true,
+			guiName = "#SSC_FM_000005", guiActive = true,
+			guiActiveEditor = false, isPersistent = false,
+			requireFullControl = false)]
+		public void FindControlPart()
+		{
+			VesselFlightMarkers.VesselModules[vessel]?.HighlightPart();
+		}
+
+		public void OnVesselReferenceTransformSwitch(Transform prev, Transform next)
+		{
+			if (prev == next) return;
+
+			if (next == part.GetReferenceTransform())
+			{
+				VesselFlightMarkers.VesselModules[vessel]?.HighlightPart(next);
+			}
+		}
+
+		protected void OnHighlightOnSwitchChanged(bool value)
+		{
+			if (value)
+				GameEvents.onVesselReferenceTransformSwitch.Add(OnVesselReferenceTransformSwitch);
+			else
+				GameEvents.onVesselReferenceTransformSwitch.Remove(OnVesselReferenceTransformSwitch);
+		}
+
+		#endregion
+
         private void OnDestroy()
         {
             if (HighLogic.LoadedScene != GameScenes.FLIGHT) return;
@@ -83,6 +138,10 @@ namespace FlightMarkers
 
             VesselFlightMarkers.VesselModules[vessel].OnFlightMarkersChanged -= OnFlightMarkersChanged;
             VesselFlightMarkers.VesselModules[vessel].OnCombineLiftChanged -= OnCombineLiftChanged;
-        }
-    }
+
+			// ControlFromWhere
+			VesselFlightMarkers.VesselModules[vessel].OnHighlightOnSwitchChanged -= OnHighlightOnSwitchChanged;
+			GameEvents.onVesselReferenceTransformSwitch.Remove(OnVesselReferenceTransformSwitch);
+		}
+	}
 }
