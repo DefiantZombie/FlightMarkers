@@ -36,7 +36,7 @@ namespace FlightMarkers.Utilities
 		public static float NearPlane = 0f;
 
 
-		private static Material DrawMaterial => _material ?? (_material = new Material(Shader.Find("Particles/Alpha Blended")));
+		private static Material DrawMaterial => _material ?? (_material = new Material(Shader.Find("Legacy Shaders/Particles/Alpha Blended")));
 
 
 		public static void NewFrame()
