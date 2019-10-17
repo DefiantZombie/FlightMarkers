@@ -114,7 +114,10 @@ namespace FlightMarkers
 
 			if (next == part.GetReferenceTransform())
 			{
-				VesselFlightMarkers.VesselModules[vessel]?.HighlightPart(next);
+				if (VesselFlightMarkers.VesselModules.ContainsKey(vessel))
+				{
+					VesselFlightMarkers.VesselModules[vessel]?.HighlightPart(next);
+				}
 			}
 		}
 
