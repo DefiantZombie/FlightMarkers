@@ -26,6 +26,12 @@ After the Advanced Tweakables option is enabled the Flight Markers option become
 
 The lift and drag marker cuton/offs can be adjusted using the game difficulty options screen. These settings are saved per-save.
 
+### Control From Where?
+
+FlightMarkers adds the ability to find the part currently in control of a vessel: Right-click any part -> Find Control Part
+
+If auto-highlight is enabled in the game settings, parts will highlight on control switch. This should help when using action groups to switch.
+
 ## Notes
 
 - A lot of the math behind this mod is rough (opinion) and displays oddities in certain situations. It's planned to make things better over time.
