@@ -1,1 +1,1 @@
-- Fixed KeyNotFoundException when parts get destroyed (#6)
+- Updated skeleton assemblies to KSP 1.10.0 (not required, but this mod was still on KSP 1.8 assemblies)
